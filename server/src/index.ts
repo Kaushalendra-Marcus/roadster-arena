@@ -6,9 +6,11 @@
  * Colyseus monitor/playground panels.
  */
 
-import { type Request, type Response } from "express";
+import express, { type Request, type Response } from "express";
 import { defineServer, defineRoom, monitor, playground } from "colyseus";
 import RAPIER from "@dimforge/rapier3d-compat";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { ArenaRoom } from "./rooms/ArenaRoom.js";
 import * as registry from "./rooms/registry.js";
 import { getEnv } from "./env.js";
@@ -17,6 +19,9 @@ const ENV = getEnv();
 
 /** WebAssembly must be ready before any room builds its physics world. */
 await RAPIER.init();
+
+/** Client build directory — served in production by this same process. */
+const clientDist = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "client", "dist");
 
 const server = defineServer({
   rooms: {
@@ -51,6 +56,13 @@ const server = defineServer({
       // dev panels (spec: monitor if exposed in production requires protection)
       app.use("/monitor", monitor());
       app.use("/playground", playground());
+    } else {
+      // single-container deployment: the site + the game socket share the port
+      app.use(express.static(clientDist));
+      // SPA fallback (final middleware; Express 5 has no '*' path pattern)
+      app.use((_req: Request, res: Response) => {
+        res.sendFile(join(clientDist, "index.html"));
+      });
     }
   },
 });

@@ -8,3 +8,5 @@ coverage/
 .env.local
 !/.env.example
 tests/debug-room.ts
+.tsbuildinfo
+*.tsbuildinfo

@@ -1,0 +1,25 @@
+# Fly.io single-app deployment (spec 18 default region: pick the one closest
+# to most players; stickiest routing matters for websockets).
+app = "roadster-arena"
+primary_region = "bom"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "8080"
+  # the deployed origin talks to itself: allow its own scheme+host
+  ALLOWED_ORIGINS = "https://roadster-arena.fly.dev,https://roadster-arena.fly.app"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
