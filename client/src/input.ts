@@ -141,7 +141,9 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
 
   return {
     sample(): DriveInput {
-      let throttle = axis(["s", "arrowdown"], ["w", "arrowup"]);
+      // throttle on W/S only — the arrow keys own pitch (hover climb / air
+      // thrust) so driving and vertical control stay independent
+      let throttle = axis(["s"], ["w"]);
       let steer = axis(["a", "arrowleft"], ["d", "arrowright"]);
       if (touchActive) {
         if (Math.abs(touchThrottle) > 0.05) throttle = touchThrottle;
@@ -159,7 +161,8 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
       return {
         throttle: applyDead(throttle),
         steer,
-        pitch: applyDead(axis(["arrowdown"], ["arrowup"])),
+        // touch: the stick's vertical is pitch while airborne (push up to climb)
+        pitch: touchActive ? touchThrottle : applyDead(axis(["arrowdown"], ["arrowup"])),
         roll: applyDead(axis(["q"], ["e"])),
         yaw: 0,
         hover: keys.has(" ") || touchModes.hover,

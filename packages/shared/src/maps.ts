@@ -14,6 +14,8 @@ export type Vec3 = { x: number; y: number; z: number };
 
 export interface BoxDef {
   kind: "wall" | "ground" | "block" | "ramp" | "gripTrack";
+  /** friction override for this collider (defaults to the world's 0.85) */
+  friction?: number;
   pos: Vec3;
   /** half extents */
   half: Vec3;
@@ -30,6 +32,9 @@ export interface TrimeshDef {
   vertices: number[]; // flat xyz
   indices: number[];
   restitution?: number;
+  /** friction override (the loop strip uses low friction so steep walls
+   *  can't friction-park a non-gripping car — spec complaint: stuck cars) */
+  friction?: number;
 }
 
 export interface GateDef {
@@ -141,7 +146,10 @@ export function buildArenaDef(cfg: GameplayConfig): ArenaDef {
     const aEnd = Math.acos((9.5 - cy) / R) * -1; // ≈ -2.55 rad
     const stations: { x: number; y: number }[] = [];
     const rampSegs = 24;
-    const ringSegs = 26;
+    // Fine ring tessellation: the coarse 26-segment ring turned ~17° per
+    // facet — at racing speed every facet lip was a drop the collider
+    // crashed into. 176 segments ≈ 4° per facet keeps the ride smooth.
+    const ringSegs = 176;
     // ease from a flush 0.05 lip to the apex; the lip is tiny enough that the
     // contact solver just nudges the car onto the surface (full burial made
     // the trimesh pierce the box from below and punch it into the sky)
@@ -168,6 +176,10 @@ export function buildArenaDef(cfg: GameplayConfig): ArenaDef {
     colliders.push({
       kind: "gripTrack",
       pos: { x: 0, y: 0, z: 0 },
+      // low friction: steep loop walls have no business holding a
+      // non-gripping car (that parked cars mid-wall forever), and gentler
+      // contact friction means the fast entry bites don't eat the whole ride
+      friction: 0.45,
       vertices: verts,
       indices: idx,
     });

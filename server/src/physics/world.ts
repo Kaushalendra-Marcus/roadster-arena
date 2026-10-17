@@ -147,7 +147,7 @@ export class SimWorld {
       }
       desc.setCollisionGroups(packGroups(GROUPS.staticAll.membership, GROUPS.staticAll.filter));
       desc.setRestitution(collider.restitution ?? 0.05);
-      desc.setFriction(0.85);
+      desc.setFriction(collider.friction ?? 0.85);
       const c = this.world.createCollider(desc);
       this.handleKinds.set(c.handle, { type: "static", label: collider.kind });
     }

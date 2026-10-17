@@ -23,6 +23,9 @@ export interface GameplayConfig {
     hoverGravityFactor: number;
     hoverLiftAccel: number;
     hoverTargetHeight: number;
+    hoverClimbSpeed: number;
+    hoverSinkSpeed: number;
+    airThrustAccel: number;
     gripAccel: number;
     maxTerrainPitchAlign: number;
     restitution: number;
@@ -96,8 +99,11 @@ export const DEFAULT_GAMEPLAY: GameplayConfig = {
     hoverGravityFactor: 0.22,
     hoverLiftAccel: 30.0,
     hoverTargetHeight: 3.0,
+    hoverClimbSpeed: 16.0,
+    hoverSinkSpeed: 10.0,
+    airThrustAccel: 34.0,
     gripAccel: 34.0,
-    maxTerrainPitchAlign: 7.5,
+    maxTerrainPitchAlign: 40.0,
     restitution: 0.02,
     maxW: 20,
   },

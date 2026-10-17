@@ -417,6 +417,18 @@ function frame(nowMs: number): void {
     const fwdSpeed = v.x * fwd.x + v.y * fwd.y + v.z * fwd.z;
     const spin = (fwdSpeed / 0.34) * (dtMs / 1000);
     for (const w of ownVisual.wheels) w.rotation.x += spin;
+
+    // thruster array: boost = full burn; hover/grip fans hum at idle;
+    // pitch thrust while airborne scales with the input
+    const mode = predictor.sim.mode;
+    const airish = mode === "hover" || mode === "grip" || pos.y > 1.5;
+    const thrust =
+      mode === "boost"
+        ? 1
+        : airish
+          ? Math.max(0.22, Math.abs(drive.pitch))
+          : 0;
+    ownVisual.setThrust(thrust);
   }
 
   // ---- remotes ----
@@ -442,7 +454,11 @@ function frame(nowMs: number): void {
     hud.speed(Math.hypot(v.x, v.y, v.z) * 3.6, CFG.physics.topSpeed);
     const meMode = me?.mode ?? predictor.sim.mode;
     const simMode = predictor.sim.mode;
-    hud.gas(predictor.sim.gas, simMode === "hover" || simMode === "grip");
+    // the gas ring reads white "air" while flying with power: hover/grip or
+    // pitch-thrusting in the air (cold-gas climb / boost arc)
+    const thrusting =
+      (simMode === "ground" || simMode === "boost") && drive.pitch !== 0 && pos.y > 1.5;
+    hud.gas(predictor.sim.gas, simMode === "hover" || simMode === "grip" || thrusting);
     // boost chip tracks the real cooldown window from the local sim's
     // boostUsedAtMs (deterministic mirror of the server's clock)
     const coolMs = Math.round(CFG.boost.cooldown * 1000);

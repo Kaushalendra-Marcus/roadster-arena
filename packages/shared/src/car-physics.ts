@@ -37,6 +37,8 @@ export interface RayResult {
   hit: boolean;
   distance: number;
   normal: Vec;
+  /** normal of a second, farther look-ahead ray (grip probing only) */
+  aheadNormal?: Vec;
 }
 
 /* ---------------------------------- math --------------------------------- */
@@ -184,11 +186,49 @@ function probeSurface(
   }
   const n = hit.normal;
   const hasNormal = Math.abs(n.x) + Math.abs(n.y) + Math.abs(n.z) > 1e-6;
-  return {
+  // Column distance: the hit must lie within the car's −up column (plus the
+  // deliberate look-ahead lean), not just anywhere the leaned ray lands. On
+  // curved venues the tall ray used to latch wall segments 4–6 m ahead that
+  // were NEVER beneath the car — those fed false distances to the servos and
+  // formed the mid-air parking attractors.
+  // Column distance: the hit must lie within the car's −up column (plus the
+  // deliberate look-ahead lean), not just anywhere the leaned ray lands. On
+  // curved venues the tall ray used to latch wall segments 4–6 m ahead that
+  // were NEVER beneath the car — those fed false distances to the servos and
+  // formed the mid-air parking attractors.
+  const hitPoint = {
+    x: origin.x + dir.x * hit.toi,
+    y: origin.y + dir.y * hit.toi,
+    z: origin.z + dir.z * hit.toi,
+  };
+  const wAhead = (hitPoint.x - p.x) * fwd.x + (hitPoint.y - p.y) * fwd.y + (hitPoint.z - p.z) * fwd.z;
+  if (wAhead > ahead + 1.5) {
+    return { hit: false, distance: Infinity, normal: { x: 0, y: 1, z: 0 } };
+  }
+  const faceDot = hasNormal ? n.x * up.x + n.y * up.y + n.z * up.z : 1;
+  if (faceDot < 0.25) return { hit: false, distance: Infinity, normal: { x: 0, y: 1, z: 0 } };
+  const result: RayResult = {
     hit: true,
     distance: Math.max(0.02, hit.toi - tall),
     normal: hasNormal ? normVec({ ...n }) : { x: up.x, y: up.y, z: up.z },
   };
+  // reference look-ahead (grip probe only): where the surface will be in a
+  // few metres — its normal relative to the first tells the grip controller
+  // whether a hard curve is coming (loop entry). Same face-cone keeps the
+  // look-ahead sane.
+  if (maxDist >= 6 && ahead > 0) {
+    const o2 = {
+      x: p.x + fwd.x * (ahead + 4.2) + up.x * tall,
+      y: p.y + fwd.y * (ahead + 4.2) + up.y * tall,
+      z: p.z + fwd.z * (ahead + 4.2) + up.z * tall,
+    };
+    const h2 = body.raycast(o2, dir, maxDist + tall + 4.2);
+    if (h2 && h2.hit) {
+      const n2 = normVec({ ...h2.normal });
+      if (n2.x * up.x + n2.y * up.y + n2.z * up.z >= 0.25) result.aheadNormal = n2;
+    }
+  }
+  return result;
 }
 
 export interface StepContext {
@@ -250,8 +290,7 @@ export function stepCar(
   const probeRange = gripWanted ? 6.0 : hoverWanted ? 30.0 : 2.6;
   const ahead = hoverWanted ? 0 : 2.1; // past the nose (half-length 2.05)
   const tall = hoverWanted ? 0 : 3.2;
-  const surf = probeSurface(body, probeRange, ahead, tall);
-  const grounded = surf.hit && surf.distance <= CAR_TARGET_CLEARANCE + 0.08;
+  let surf = probeSurface(body, probeRange, ahead, tall);
 
   const boostWindowMs = Math.round(ctx.cfg.boost.duration * 1000);
   const boosting = boostWindowMs > 0 && nowMs - sim.boostUsedAtMs < boostWindowMs;
@@ -272,36 +311,65 @@ export function stepCar(
     mode = "ground";
   }
 
+  // Terrain pitch limit for un-fanned rides: past maxTerrainPitchAlign the
+  // only support is grip. A ground/boost car that still sees steep terrain
+  // (the loop's steep band seen through the hollow) is falling, not standing
+  // — drop the surface so no servo, guard or align can pin it mid-wall.
+  if (
+    surf.hit &&
+    mode !== "grip" &&
+    mode !== "hover" &&
+    (Math.acos(clamp(surf.normal.y, -1, 1)) * 180) / Math.PI > ph.maxTerrainPitchAlign
+  ) {
+    surf = { hit: false, distance: Infinity, normal: surf.normal };
+  }
+  const grounded = surf.hit && surf.distance <= CAR_TARGET_CLEARANCE + 0.08;
+
   // ---------- 4. world-space velocity work ----------------------------------
-  // 4a. pin spring — hold the target clearance above the surfac
-  if (surf.hit && (grounded || mode === "grip")) {
-    const err = surf.distance - CAR_TARGET_CLEARANCE;
-    // One stiff spring for both modes: heavier springs shrink the
-    // slope-following lag (lag ≈ slope·speed/spring), so the clearance
-    // survives ramp entries without the surface reaching the body.
-    const spring = 140;
-    const corr = -err * spring;
-    v.x += surf.normal.x * corr * dt;
-    v.y += surf.normal.y * corr * dt;
-    v.z += surf.normal.z * corr * dt;
+  // 4a. pin spring — hold the target clearance above the surface (ground and
+  // boost only; grip uses the fastener servo in 4e, hover its own servo in 4b).
+  // maxTerrainPitchAlign caps WHERE the pin may act: past ~40° the true ride is
+  // fan-suction territory, and a standing pin on the ring's steep band kept
+  // non-gripping cars parked mid-wall forever (the stuck-strip complaint). The
+  // cosine-ease ramp maxes at ~17°, so every drive surface keeps the pin.
+  if (surf.hit && grounded && (mode === "ground" || mode === "boost")) {
+    const pitchDeg = (Math.acos(clamp(surf.normal.y, -1, 1)) * 180) / Math.PI;
+    if (pitchDeg <= ph.maxTerrainPitchAlign) {
+      const err = surf.distance - CAR_TARGET_CLEARANCE;
+      // One stiff spring for both modes: heavier springs shrink the
+      // slope-following lag (lag ≈ slope·speed/spring), so the clearance
+      // survives ramp entries without the surface reaching the body.
+      const spring = 140;
+      const corr = -err * spring;
+      v.x += surf.normal.x * corr * dt;
+      v.y += surf.normal.y * corr * dt;
+      v.z += surf.normal.z * corr * dt;
+    }
   }
 
   // 4b. hover altitude servo — track hover height above the surface below.
   // A velocity servo (not an acceleration) so feedback stays stable no
-  // matter how high the car already is.
+  // matter how high the car already is. Pitch takes the altitude over:
+  // hold pitch up to climb (no height cap — the sky is the limit), pitch
+  // down to sink; release and the servo glides back to the hover target.
   if (mode === "hover") {
     if (surf.hit) {
       const target = ph.hoverTargetHeight + CAR_TARGET_CLEARANCE;
       const err = target - surf.distance;
-      const vDes = clamp(err * 1.2, -5, 9); // commanded climb speed, m/s
+      const vDes =
+        pitch !== 0
+          ? pitch * (pitch > 0 ? ph.hoverClimbSpeed : ph.hoverSinkSpeed)
+          : clamp(err * 1.2, -5, 9); // commanded climb speed, m/s
       const vN = dot(v, surf.normal);
       const dv = (vDes - vN) * Math.min(1, 5 * dt);
       v.x += surf.normal.x * dv;
       v.y += surf.normal.y * dv;
       v.z += surf.normal.z * dv;
     } else {
-      // nothing below at all: settle gently instead of rocketing
-      v.y += 2 * dt;
+      // nothing below at all: pitch still flies, else settle gently
+      v.y += (pitch !== 0
+        ? pitch * (pitch > 0 ? ph.hoverClimbSpeed : ph.hoverSinkSpeed)
+        : 2) * dt;
     }
   }
 
@@ -322,7 +390,10 @@ export function stepCar(
   v.z += gVec.z * dt;
 
   // 4d. inward guard — on a surface, velocity toward the surface gets removed
-  if (surf.hit && (grounded || mode === "grip")) {
+  // (ground/boost/hover landings). Grip mode skips this — the fastener in
+  // 4e manages approach velocity itself, and this guard used to cancel the
+  // fastener's pull-in, parking cars mid-air off loop walls.
+  if (surf.hit && grounded && mode !== "grip") {
     const vAlongN = dot(v, surf.normal);
     if (vAlongN < 0) {
       const vn = -vAlongN;
@@ -330,6 +401,37 @@ export function stepCar(
       v.y += surf.normal.y * vn;
       v.z += surf.normal.z * vn;
     }
+  }
+
+  // 4f. grip curve-shed — when the surface curves hard just ahead (the
+  // loop's entry) and we're still lapping at racing speed, bleed speed fast
+  // enough that the ride align can follow the turn. Only grip rides see the
+  // look-ahead normal, so wedge-ramp launches are untouched.
+  if (surf.hit && mode === "grip" && surf.aheadNormal) {
+    const aN = normVec(surf.aheadNormal);
+    const curve = aN.x * surf.normal.x + aN.y * surf.normal.y + aN.z * surf.normal.z;
+    const sp = Math.hypot(v.x, v.y, v.z);
+    // floor at 40 m/s: rounding a 17 m ring needs ≈ √(2·g·2R) ≈ 37 m/s of
+    // energy left at the bottom, so shedding below that stalls the climb
+    if (curve < 0.92 && sp > 40) {
+      const shed = Math.exp(-3.5 * dt);
+      v.x *= shed; v.y *= shed; v.z *= shed;
+    }
+  }
+
+  // 4e. grip fastener — replaces the pin spring + inward guard while gripping.
+  // A damped PD servo on the gap: the proportional term contracts to the
+  // clearance offset (and supplies the centripetal load of fast lap rides),
+  // the derivative term damps the approach so latch-ins glide instead of
+  // slamming (a deadbeat velocity servo vibrated against the contact solver
+  // and eaten the climb). The 320 cap bounds a solver hiccup's worst case.
+  if (surf.hit && mode === "grip") {
+    const err = surf.distance - CAR_TARGET_CLEARANCE;
+    const vN = dot(v, surf.normal);
+    const aN = clamp(-err * 30 - vN * 12, -320, 320);
+    v.x += surf.normal.x * aN * dt;
+    v.y += surf.normal.y * aN * dt;
+    v.z += surf.normal.z * aN * dt;
   }
 
   // ---------- 5. basis control ----------------------------------------------
@@ -388,8 +490,15 @@ export function stepCar(
   const topSpeed = mode === "boost" ? ph.boostTopSpeed : ph.topSpeed;
   newLong = clamp(newLong, -16, topSpeed);
 
-  // ---------- 7. rotation in the air (flips / auto barrel roll) ---------------
+  // ---------- 6b. cold-gas thrusters (airborne pitch thrust) -----------------
+  // Pitching in the air fires the thruster array along the car's own up:
+  // nose up powers a climb toward the sky (no height cap), nose down dives.
   const airborne = !grounded && mode !== "grip" && mode !== "hover";
+  if (airborne && pitch !== 0) {
+    newVert += pitch * ph.airThrustAccel * dt;
+  }
+
+  // ---------- 7. rotation in the air (flips / auto barrel roll) ---------------
   if (airborne) {
     const upNow = rotateVec(q, { x: 0, y: 1, z: 0 });
     const rightNow = normVec(cross(upNow, fwd));
@@ -413,18 +522,70 @@ export function stepCar(
   } else if (grounded || mode === "grip" || mode === "hover") {
     body.setAngvel({ x: 0, y: 0, z: 0 }, true);
 
-    // align the body to the surface normal while keeping the heading.
-    // Rapier already orients the hit normal toward the ray origin (the car's
-    // up side), so this is the same fix for floor, ceiling, wall and the
-    // inside of the vertical loop — never negate it (that made grip latches
-    // flip the car upside-down on flat ground).
-    const upTarget: Vec = grounded || mode === "grip" ? (surf.hit ? normVec(surf.normal) : u0) : u0;
-    if (dot(upTarget, u0) < 0.9995) {
-      const alignRight = normVec(cross(upTarget, fwd));
-      const alignFwd = normVec(cross(alignRight, upTarget));
-      if (alignRight.x + alignRight.y + alignRight.z > 0) {
-        const targetQ = basisToQuat(alignRight, upTarget, alignFwd);
-        q = quatSlerp(q, targetQ, clamp(10 * dt, 0, 1));
+    if (mode === "grip" && surf.hit) {
+      // ---------- grip ride align (wall/loop/ceiling drives) ----------
+      // Rotate the car's up toward the probe normal (Rapier orients the hit
+      // normal toward the ray origin — the car's up side — for floor,
+      // ceiling, wall and the inside of the vertical loop alike; never
+      // negate it). Axis-angle with a rate cap: rotating about
+      // cross(u0, target) by the signed angle maps up → target exactly,
+      // which the old basisToQuat-to-target + slerp chain did not manage
+      // (it built a pitch-down target and slammed the box's nose into
+      // ramp toes at speed). 2.2 rad/s ≈ a 90° wall entry in ~0.7 s.
+      const upTarget = normVec(surf.normal);
+      const crUp = cross(u0, upTarget);
+      const crMag = Math.hypot(crUp.x, crUp.y, crUp.z);
+      const faceDot = dot(upTarget, u0);
+      // Align only in the wall/loop regime: the surface substantially
+      // disagrees with the car's up (>~30°). On gentle ramps the flat-kept
+      // box slides the mesh's facet lips safely at full speed — a pitched
+      // box instead lances its nose corner into every lip and the solver
+      // eats the ride (probed: 60 m/s rides die when this gate is open too
+      // wide). Once past the gate the axis-angle rotation turns up AND
+      // heading onto the surface, giving the loop / wall / ceiling drive.
+      if (crMag > 0.02 && faceDot < 0.86 && faceDot > -0.2) {
+        const ang = Math.acos(clamp(faceDot, -1, 1));
+        if (ang > 0.01 && ang < 2.5) {
+          const axis: Vec = { x: crUp.x / crMag, y: crUp.y / crMag, z: crUp.z / crMag };
+          q = quatMul(q, quatRotateAxis(axis, Math.min(ang, 2.2 * dt)));
+        }
+        // heading curve: rotate the heading toward the tangential motion
+        // direction while latched to a tilted surface (nose points where
+        // the ride goes); NOT on gentle rides (noise-steering amplifies
+        // lateral drift off the strip's side edge).
+        const vnG = v.x * upTarget.x + v.y * upTarget.y + v.z * upTarget.z;
+        const tang: Vec = {
+          x: v.x - upTarget.x * vnG,
+          y: v.y - upTarget.y * vnG,
+          z: v.z - upTarget.z * vnG,
+        };
+        const tSpeed = Math.hypot(tang.x, tang.y, tang.z);
+        if (tSpeed > 8) {
+          const tDir: Vec = { x: tang.x / tSpeed, y: tang.y / tSpeed, z: tang.z / tSpeed };
+          const fDot = dot(fwd, tDir);
+          const crF = cross(fwd, tDir);
+          const crFMag = Math.hypot(crF.x, crF.y, crF.z);
+          if (crFMag > 0.02 && fDot > -0.2) {
+            const fAng = Math.acos(clamp(fDot, -1, 1));
+            if (fAng > 0.02) {
+              const axisF: Vec = { x: crF.x / crFMag, y: crF.y / crFMag, z: crF.z / crFMag };
+              q = quatMul(q, quatRotateAxis(axisF, Math.min(fAng, 2.2 * dt)));
+            }
+          }
+        }
+      }
+    } else {
+      // ---------- ground/hover align (legacy, unchanged) ----------
+      // Rapier already orients the hit normal toward the ray origin (the
+      // car's up side); never negate it (that made latch flips on flat).
+      const upTarget: Vec = grounded && surf.hit ? normVec(surf.normal) : u0;
+      if (dot(upTarget, u0) < 0.9995) {
+        const alignRight = normVec(cross(upTarget, fwd));
+        const alignFwd = normVec(cross(alignRight, upTarget));
+        if (alignRight.x + alignRight.y + alignRight.z > 0) {
+          const targetQ = basisToQuat(alignRight, upTarget, alignFwd);
+          q = quatSlerp(q, targetQ, clamp(10 * dt, 0, 1));
+        }
       }
     }
   }
@@ -458,9 +619,53 @@ export function stepCar(
     };
   }
 
+  // ---------- 9b. rail ride (grip): velocity hugs the surface ascent ---------
+  // Fan-suction abstraction — while latched, motion stays ON the surface
+  // rail (the planar ascent direction), so the loop's turn happens in the
+  // velocity field instead of the collider hammering each facet lip.
+  // Speed is preserved, only the direction snaps toward the rail; this also
+  // kills lateral drift off the strip's side edge (v_z is railless).
+  if (mode === "grip" && surf.hit) {
+    const n = normVec(surf.normal);
+    // rail = forward projected onto the surface plane when the nose is
+    // mostly along the ride (ceiling/tunnel drives keep their true heading,
+    // ground steering keeps working); when the nose dives INTO the surface
+    // (loop wall entry) fall back to the arena's planar ascent direction.
+    const fN = dot(fwd, n);
+    let proj: Vec = { x: fwd.x - n.x * fN, y: fwd.y - n.y * fN, z: fwd.z - n.z * fN };
+    const projMag = Math.hypot(proj.x, proj.y, proj.z);
+    let rail: Vec;
+    if (projMag > 0.4) {
+      rail = { x: proj.x / projMag, y: proj.y / projMag, z: proj.z / projMag };
+    } else {
+      const crossRail: Vec = { x: -n.y, y: n.x, z: 0 };
+      rail = crossRail.x * fwd.x + crossRail.y * fwd.y + crossRail.z * fwd.z < 0
+        ? { x: -crossRail.x, y: -crossRail.y, z: 0 }
+        : crossRail;
+    }
+    // Curved surfaces (the ring's inside) extrude along ±z: any z velocity
+    // slides the car across the tube and dumps it off the strip's side, so
+    // their rails are planar. Flat venues (tunnel ceiling, plaza ground)
+    // agree with their look-ahead normal and keep full 3D rails — the
+    // tunnel's drive direction stays free.
+    if (surf.aheadNormal) {
+      const aN = normVec(surf.aheadNormal);
+      if (aN.x * n.x + aN.y * n.y + aN.z * n.z < 0.98) {
+        const mag = Math.hypot(rail.x, rail.y) || 1;
+        rail = { x: rail.x / mag, y: rail.y / mag, z: 0 };
+      }
+    }
+    const along = targetV.x * rail.x + targetV.y * rail.y + targetV.z * rail.z;
+    const railSnap = Math.min(1, 20 * dt);
+    targetV = {
+      x: targetV.x + (rail.x * along - targetV.x) * railSnap,
+      y: targetV.y + (rail.y * along - targetV.y) * railSnap,
+      z: targetV.z + (rail.z * along - targetV.z) * railSnap,
+    };
+  }
+
   body.setLinvel(targetV, true);
   body.setRotation(quatNormalise(q), true);
-
   sim.mode = mode;
   return mode;
 }
