@@ -1,0 +1,24 @@
+{
+  "name": "roadster-arena-server",
+  "version": "0.1.0",
+  "description": "Authoritative Colyseus game server: rooms, physics, matchmaking.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "build": "tsc -b . --noEmit",
+    "typecheck": "tsc -b . --noEmit"
+  },
+  "dependencies": {
+    "@colyseus/schema": "^5.0.40",
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@roadster-arena/shared": "*",
+    "colyseus": "^0.18.9",
+    "express": "^5.3.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "tsx": "^4.21.0"
+  }
+}

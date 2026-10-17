@@ -1,0 +1,21 @@
+{
+  "name": "roadster-arena-client",
+  "version": "0.1.0",
+  "description": "Roadster Arena browser client: three.js game + landing page.",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "dev:host": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b . --noEmit"
+  },
+  "dependencies": {
+    "@colyseus/sdk": "^0.18.5",
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@roadster-arena/shared": "*",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {}
+}

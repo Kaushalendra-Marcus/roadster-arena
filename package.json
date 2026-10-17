@@ -1,0 +1,36 @@
+{
+  "name": "roadster-arena",
+  "version": "0.1.0",
+  "description": "Roadster Arena — a free, casual, multiplayer browser game where you drive a futuristic flying-car sports roadster. Unofficial fan project.",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">= 22.0.0"
+  },
+  "workspaces": [
+    "packages/shared",
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server \" \"npm:dev:client \"",
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "build": "npm run build -w client && npm run build -w server",
+    "start": "npm run start -w server",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "typecheck": "tsc -b packages/shared && tsc -b server && tsc -b client"
+  },
+  "devDependencies": {
+    "@colyseus/testing": "^0.18.6",
+    "@types/node": "^22.13.13",
+    "concurrently": "^10.0.6",
+    "eslint": "^9.18.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.25.0",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  }
+}

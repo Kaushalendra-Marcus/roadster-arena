@@ -1,0 +1,16 @@
+{
+  "name": "@roadster-arena/shared",
+  "version": "0.1.0",
+  "description": "Types, constants, message schemas, map data and physics code shared between the server (authoritative) and the browser client (prediction).",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@colyseus/schema": "^5.0.40"
+  },
+  "scripts": {
+    "typecheck": "tsc -b ."
+  }
+}

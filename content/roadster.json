@@ -1,0 +1,70 @@
+{
+  "$comment": "Roadster facts for the landing page (spec 10.2). Every figure is as reported by news coverage of the 15 October 2026 reveal — claims by Tesla, not independently tested. Re-verify against Tesla's official Roadster page before launch and bump lastChecked.",
+  "lastChecked": "2026-10-17",
+  "sources": {
+    "reveal": "https://www.tesla.com/roadster",
+    "note": "Store per-figure source links in sources array of each entry; re-verify at launch."
+  },
+  "reveal": {
+    "displayDate": "15 October 2026",
+    "isoDate": "2026-10-15",
+    "location": "SpaceX test facility, McGregor, Texas",
+    "delayNote": "Delayed from 1 October because of rain",
+    "summary": "Second-generation Roadster revealed 15 October 2026 at SpaceX's McGregor test facility, after a one-day delay for rain. The car drove up a ramp, stuck to it upside down with its fan suction system, and flipped through the air using cold-gas thrusters. Roadster Arena recreates exactly that party trick, in browser multiplayer."
+  },
+  "specs": [
+    { "id": "accel60",  "label": "0 to 60 mph", "value": "0.81 s", "note": "Timed at the event; under 1 s claimed. Under 0.59 s claimed for the Rocket version.", "claimed": true },
+    { "id": "topSpeed", "label": "Top speed", "value": "230+ mph", "note": "As claimed at the reveal.", "claimed": true },
+    { "id": "range",    "label": "Range", "value": "300+ miles", "note": "Lower than the 620 miles promised in 2017.", "claimed": true },
+    { "id": "seats",    "label": "Seats", "value": "2", "note": "Rocket trim reported as single-seat.", "claimed": true },
+    { "id": "cornering","label": "Cornering", "value": "2 g+", "note": "Claimed with the fan suction system.", "claimed": true },
+    { "id": "price",    "label": "Final price", "value": "Not announced", "note": "Only reservation deposits are open.", "claimed": true }
+  ],
+  "trims": [
+    {
+      "id": "performance",
+      "name": "Performance",
+      "roadLegal": true,
+      "seats": 2,
+      "highlights": ["0–60 mph under 1 s (claimed)", "300+ miles range", "Full-width tail light, rear thruster array"],
+      "deposit": "$50,000",
+      "depositNote": "$5,000 due at reservation (Electrek), described by Tesla as fully refundable; $45,000 within 10 days"
+    },
+    {
+      "id": "thrust",
+      "name": "Thrust",
+      "roadLegal": true,
+      "seats": 2,
+      "highlights": ["Added cold-gas thruster package", "Cornering beyond 2 g claimed with fan suction", "Deposit per coverage: $250,000"],
+      "deposit": "$250,000",
+      "depositNote": "Reported deposit per Tesla's reservation page"
+    },
+    {
+      "id": "rocket",
+      "name": "Rocket",
+      "roadLegal": false,
+      "roadLegalNote": "Marked as not road legal",
+      "seats": 1,
+      "highlights": ["Single seat", "Invitation only", "Under 0.59 s to 60 mph claimed"],
+      "deposit": null,
+      "depositNote": "Not publicly listed"
+    }
+  ],
+  "timeline": [
+    { "year": "2017", "title": "Second-gen Roadster unveiled", "text": "Prototype shown on a Roadstar chassis; Musk promises 0–60 in 1.9 s, 620 miles range and SpaceX-option cold-gas thrusters." },
+    { "year": "2020–2025", "title": "Repeated delays", "text": "Production slips year after year alongside Cybertruck; every previously announced date is missed." },
+    { "year": "2026", "title": "15 October: the reveal", "text": "Revealed at SpaceX McGregor. Drives up a ramp, sticks upside down, flips on thrusters. 0.81 s to 60 timed at the event." },
+    { "year": "2028", "title": "Targeted production", "text": "Musk: quote \"2028, actually\". Roadster Arena treats this with appropriate optimism." }
+  ],
+  "honesty": {
+    "note": "Tesla has missed every previously announced Roadster delivery date so far. All figures on this page are claims made by Tesla at the time of the reveal and have not been independently verified.",
+    "disclosureLabel": "Claims, not independently tested"
+  },
+  "reservations": {
+    "performanceDeposit": "$50,000",
+    "thrustDeposit": "$250,000",
+    "electrekNote": "Electrek reports $5,000 due at reservation, described by Tesla as fully refundable, and $45,000 within 10 days.",
+    "buttonLabel": "Reserve on Tesla",
+    "urlEnvVar": "RESERVE_URL"
+  }
+}

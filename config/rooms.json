@@ -1,0 +1,19 @@
+{
+  "$comment": "Room and server capacity rules (spec 7, 15, 18). MAX_PLAYERS_PER_ROOM can be overridden via .env on the server.",
+  "roomType": "arena",
+  "roomDisplayName": "Arena",
+  "maxPlayersPerRoom": 20,
+  "minPlayersPerRoomOptions": 10,
+  "maxPlayersPerRoomOptions": 20,
+  "reconnectHoldSeconds": 15,
+  "maxRoomsPerProcess": 40,
+  "maxPlayersPerProcess": 400,
+  "perIPConnectionLimit": 5,
+  "physicsTickHz": 60,
+  "stateBroadcastHz": 20,
+  "inputRateHz": 30,
+  "emoteCooldownMs": 1200,
+  "nameMinLength": 2,
+  "nameMaxLength": 16,
+  "allowedOrigins": ["http://localhost:5173", "http://localhost:4173", "http://localhost:3000"]
+}

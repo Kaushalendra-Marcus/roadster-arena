@@ -1,0 +1,53 @@
+{
+  "$comment": "All tunable gameplay numbers live here (spec 6.2). Loaded by server (authoritative sim) and client (prediction) — keep them identical.",
+  "physics": {
+    "topSpeed": 60,
+    "boostTopSpeed": 68,
+    "groundAccel": 28,
+    "groundBrakeAccel": 34,
+    "grip_Lateral": 6.5,
+    "hoverLateralAccel": 12,
+    "turnRate": 2.6,
+    "hoverTurnRate": 2.0,
+    "airTurnRate": 1.6,
+    "airPitchTorque": 7.5,
+    "airRollTorque": 6.2,
+    "airTorqueSnapRoll": 10.0,
+    "gravity": 26.0,
+    "hoverGravityFactor": 0.22,
+    "hoverLiftAccel": 30.0,
+    "hoverTargetHeight": 3.0,
+    "gripAccel": 34.0,
+    "maxTerrainPitchAlign": 7.5,
+    "restitution": 0.3,
+    "maxW": 20
+  },
+  "gas": {
+    "max": 100,
+    "start": 100,
+    "hoverDrainPerSecond": 25,
+    "gripDrainPerSecond": 15,
+    "boostCost": 40,
+    "rechargePerSecond": 20,
+    "rechargeOnlyWhenGrounded": true
+  },
+  "boost": {
+    "duration": 1.0,
+    "impulse": 24,
+    "cooldown": 5.0
+  },
+  "respawn": {
+    "ghostSeconds": 1.5,
+    "killY": -20
+  },
+  "arena": {
+    "halfSize": 300,
+    "softWallRadius": 270,
+    "softWallForce": 30,
+    "wallRestitution": 0.1
+  },
+  "gate": {
+    "boostImpulse": 18,
+    "cooldownSeconds": 3
+  }
+}
