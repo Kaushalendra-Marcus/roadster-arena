@@ -203,7 +203,7 @@ export function stepCar(
 
   // ---------- 1. read state -------------------------------------------------
   const p = body.translation;
-  let v: Vec = { ...body.linvel };
+  const v: Vec = { ...body.linvel };
   let q: Quat = quatNormalise({ ...body.rotation });
 
   // input shaping (digital throttle, dead-zoned analog sticks)
@@ -213,7 +213,6 @@ export function stepCar(
   const pitch = active(input.pitch);
   const rollRaw = active(input.roll);
 
-  const n = { x: 0, y: 1, z: 0 };
   const f0 = rotateVec(q, { x: 0, y: 0, z: 1 });
   const u0 = rotateVec(q, { x: 0, y: 1, z: 0 });
 

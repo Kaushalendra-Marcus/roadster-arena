@@ -9,10 +9,10 @@ const client = new Client(url);
 const room = await client.joinOrCreate("arena", { name: "Probe-1", colour: "red" });
 console.log("joined", room.id, room.sessionId);
 
-let patches = 0;
+let _patches = 0;
 room.onStateChange((state: ArenaState) => {
   void state;
-  patches++;
+  _patches++;
 });
 
 // the first patch creates the state locally (0.18 lazy state)

@@ -6,7 +6,7 @@
  * Colyseus monitor/playground panels.
  */
 
-import express, { type Request, type Response } from "express";
+import { type Request, type Response } from "express";
 import { defineServer, defineRoom, monitor, playground } from "colyseus";
 import RAPIER from "@dimforge/rapier3d-compat";
 import { ArenaRoom } from "./rooms/ArenaRoom.js";

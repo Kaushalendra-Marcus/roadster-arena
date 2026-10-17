@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Roadster Arena — fly the car, own the sky</title>
+    <meta name="description" content="Roadster Arena: a multiplayer arena where electric hypercars drive, boost and take flight. 20 players per arena, hover across the map, grip through loops." />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <!-- ==================== LANDING PAGE ==================== -->
+    <main id="landing">
+      <header class="topbar">
+        <a class="brand" href="#top">ROADSTER<span>ARENA</span></a>
+        <nav>
+          <a href="#game">Play</a>
+          <a href="#facts">The Car</a>
+          <a href="#reserve">Reserve</a>
+        </nav>
+      </header>
+
+      <section class="hero" id="top">
+        <div class="hero-kicker"><span></span> Multiplayer flight arena / 01</div>
+        <h1>Drive it.<br /><em>Then leave the ground.</em></h1>
+        <p class="tagline">
+          A multiplayer arena of flying electric hypercars. Twenty drivers, one
+          map, no lap times — just altitude, gates and nerve.
+        </p>
+        <div class="hero-cta">
+          <button id="play-now" class="btn primary">Enter the Arena</button>
+          <a class="btn ghost" href="#facts">Meet the car</a>
+        </div>
+        <div class="hero-meta">
+          <span><b>20</b> drivers per arena</span>
+          <span><b>60</b> Hz physics</span>
+          <span><b>∞</b> ways to fly</span>
+        </div>
+        <div class="hero-showcase" aria-label="Roadster Arena 3D car preview">
+          <canvas id="hero-car"></canvas>
+          <div class="hero-orbit"></div>
+          <span class="showcase-label">R-01 / SKYLINE SPEC</span>
+        </div>
+      </section>
+
+      <section class="facts" id="facts">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">Built for the impossible</div>
+            <h2>The roadster, reimagined.</h2>
+          </div>
+          <p class="lede">Real numbers from the reservation sheet, rendered as the spec sheet of the car you'll fly in-game.</p>
+        </div>
+        <div class="fact-layout">
+          <div class="fact-image">
+            <img src="/assets/reference/3-rr-perf-side-d-wide.avif" alt="Roadster side profile" loading="lazy" />
+            <span>FORM / FUNCTION</span>
+          </div>
+          <dl id="fact-grid"><!-- filled from content/roadster.json --></dl>
+        </div>
+        <p class="disclaimer" id="legal-disclaimer"></p>
+      </section>
+
+      <section class="reserve" id="reserve">
+        <div class="reserve-art">
+          <img src="/assets/reference/2-rr-perf-rear-d-wide.avif" alt="Roadster rear light bar" loading="lazy" />
+        </div>
+        <div class="reserve-copy">
+          <div class="eyebrow">Your launch sequence starts here</div>
+          <h2>Ready to<br /><em>break gravity?</em></h2>
+          <p>Production is limited. A refundable deposit holds your place in the queue.</p>
+          <a id="reserve-button" class="btn primary" href="#" target="_blank" rel="noopener noreferrer">Reserve on Tesla <span>↗</span></a>
+          <p class="fine" id="reserve-note"></p>
+        </div>
+      </section>
+
+      <footer class="foot">
+        <span>Roadster Arena — unofficial fan project. Not affiliated with any car manufacturer.</span>
+        <span id="foot-version"></span>
+      </footer>
+    </main>
+
+    <!-- ==================== GAME ==================== -->
+    <div id="game" class="hidden">
+      <canvas id="arena-canvas"></canvas>
+
+      <!-- join overlay -->
+      <div id="join-overlay" class="overlay">
+        <form id="join-form" autocomplete="off">
+          <h1>Roadster Arena</h1>
+          <label for="join-name">Driver name</label>
+          <input id="join-name" name="name" maxlength="16" minlength="2" required placeholder="2–16 characters" />
+          <p class="err" id="join-error" role="alert"></p>
+          <button class="btn primary" type="submit">Enter the Arena</button>
+          <button class="btn ghost" type="button" id="join-back">Back to site</button>
+        </form>
+      </div>
+
+      <!-- connection / status strip -->
+      <div id="conn-status" class="strip hidden"></div>
+
+      <!-- HUD -->
+      <div id="hud" class="hidden">
+        <div id="hud-speedo">
+          <span id="speed-value">0</span><span class="unit">km/h</span>
+          <div id="speed-bar"><i></i></div>
+        </div>
+        <div id="hud-gas">
+          <svg viewBox="0 0 64 64" aria-hidden="true"><circle id="gas-ring-bg" cx="32" cy="32" r="26" /><circle id="gas-ring" cx="32" cy="32" r="26" /></svg>
+          <span id="gas-label">GAS</span>
+        </div>
+        <div id="hud-boost" class="ready">BOOST <small>ready</small></div>
+        <div id="hud-mode">GROUND</div>
+        <div id="hud-players"><span id="players-count">1</span> drivers</div>
+        <div id="hud-room"><span id="room-name">—</span></div>
+        <div id="hud-ping"><span id="ping-value">—</span> ms</div>
+        <div id="hud-respawn" class="hidden">Respawning…</div>
+        <div id="hud-help" title="Controls">
+          <b>W/S</b> throttle · <b>A/D</b> steer · <b>Shift</b> boost ·
+          <b>Space</b> hover · <b>G</b> grip · <b>R</b> respawn ·
+          <b>Q/E</b> roll · mouse pitch/steer (in air) · <b>1–8</b> emotes ·
+          <b>Tab</b> scoreboard
+        </div>
+        <div id="scoreboard" class="hidden"><table><thead><tr><th>#</th><th>Driver</th><th>Mode</th><th>km/h</th></tr></thead><tbody id="score-rows"></tbody></table></div>
+        <div id="emote-pop" class="hidden"></div>
+        <button id="hud-leave" title="Leave arena">✕</button>
+      </div>
+
+      <!-- touch controls -->
+      <div id="touch-controls" class="hidden">
+        <div id="touch-stick" title="Steer"><i></i></div>
+        <div class="touch-col right">
+          <button data-touch="throttle" class="tbtn up">▲</button>
+          <button data-touch="brake" class="tbtn down">▼</button>
+        </div>
+        <div class="touch-col far-right">
+          <button data-touch="hover" class="tbtn small">HVR</button>
+          <button data-touch="boost" class="tbtn small">BST</button>
+          <button data-touch="grip" class="tbtn small">GRP</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

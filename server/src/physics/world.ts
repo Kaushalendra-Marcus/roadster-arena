@@ -116,7 +116,7 @@ export class SimWorld {
 
   private buildArena(): void {
     for (const collider of this.def.colliders) {
-      let desc: ColliderDesc =
+      const desc: ColliderDesc =
         "vertices" in collider
           ? ColliderDesc.trimesh(
               new Float32Array(collider.vertices),
