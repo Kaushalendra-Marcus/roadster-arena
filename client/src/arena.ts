@@ -35,9 +35,9 @@ export function createArenaView(canvas: HTMLCanvasElement, cfg: GameplayConfig, 
   const camera = new THREE.PerspectiveCamera(64, canvas.clientWidth / canvas.clientHeight, 0.1, 900);
 
   // ---- lights ----
-  const hemi = new THREE.HemisphereLight(0xcfd8ff, 0x14161a, 0.85);
+  const hemi = new THREE.HemisphereLight(0xdce7ff, 0x252936, 1.15);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff2df, 1.35);
+  const sun = new THREE.DirectionalLight(0xfff2df, 1.7);
   sun.position.set(120, 190, -80);
   sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048);
@@ -47,6 +47,9 @@ export function createArenaView(canvas: HTMLCanvasElement, cfg: GameplayConfig, 
   sun.shadow.camera.bottom = -320;
   sun.shadow.camera.far = 700;
   scene.add(sun);
+  const fill = new THREE.DirectionalLight(0x9fc5ff, 0.8);
+  fill.position.set(-90, 45, -120);
+  scene.add(fill);
   // warm rim from the "sunset" side
   const rim = new THREE.DirectionalLight(0xff8844, 0.5);
   rim.position.set(-180, 60, 240);
@@ -109,7 +112,7 @@ export function createArenaView(canvas: HTMLCanvasElement, cfg: GameplayConfig, 
       g.setAttribute("position", new THREE.Float32BufferAttribute(c.vertices, 3));
       g.setIndex(c.indices);
       g.computeVertexNormals();
-      const m = new THREE.Mesh(g, c.kind === "loop" ? trackMat : concrete);
+      const m = new THREE.Mesh(g, c.kind === "gripTrack" ? trackMat : concrete);
       m.position.set(c.pos.x, c.pos.y, c.pos.z);
       m.castShadow = true;
       m.receiveShadow = true;

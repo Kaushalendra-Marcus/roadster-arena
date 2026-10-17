@@ -51,6 +51,13 @@ export async function initPhysQuery(cfg: GameplayConfig): Promise<PhysQuery> {
     world.createCollider(desc);
   }
 
+  // Rapier's query pipeline (what castRay uses) is only populated once the
+  // world has stepped. A never-stepped static world answers every ray with
+  // null — the predicted car would fall through the floor between snapshots
+  // and shiver/rotate as each reconcile snaps it back. One step here arms the
+  // pipeline for good (nothing moves — it is all static geometry).
+  world.step();
+
   return {
     castRay(origin, dir, maxToi) {
       const r = new RAPIER.Ray(origin, dir);

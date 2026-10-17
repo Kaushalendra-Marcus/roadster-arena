@@ -93,7 +93,7 @@ export function makeCarView(body: RAPIER.RigidBody, world: World): CarBodyView {
 export type HitKind =
   | { type: "car"; sessionId: string }
   | { type: "gate"; gateIndex: number }
-  | { type: "static" };
+  | { type: "static"; label?: string };
 
 export class SimWorld {
   readonly world: World;
@@ -109,8 +109,18 @@ export class SimWorld {
     // Gravity lives in the car controller (gravityScale=0); arena bodies are
     // static, so a zero world gravity is right (spec 6.2).
     this.world = new rapier.World({ x: 0, y: 0, z: 0 });
+    // Kill Rapier's speculative (soft-CCD) contacts: at car speeds the
+    // predictor stops the body at up-to-~0.2 m from a surface and dumps the
+    // full approach velocity as an impulse, which read as a wall slam at every
+    // ramp lip. With it off the controller's own clearance servo handles the
+    // entries and stable contacts still keep resting/crashing working.
+    this.world.integrationParameters.normalizedPredictionDistance = 0;
     this.def = buildArenaDef(cfg);
     this.buildArena();
+    // Arm Rapier's query pipeline: castRay returns null on a never-stepped
+    // world, so without this the very first control ticks after room creation
+    // would probe empty space (cars unpinned for a moment).
+    this.world.step();
     this.eventQueue = new rapier.EventQueue(true);
   }
 
@@ -139,7 +149,7 @@ export class SimWorld {
       desc.setRestitution(collider.restitution ?? 0.05);
       desc.setFriction(0.85);
       const c = this.world.createCollider(desc);
-      this.handleKinds.set(c.handle, { type: "static" });
+      this.handleKinds.set(c.handle, { type: "static", label: collider.kind });
     }
 
     // ring gate sensors (spec 8: ring gates give a small boost when flown
@@ -179,18 +189,26 @@ export class SimWorld {
       .setAngvel({ x: 0, y: 0, z: 0 })
       .setRotation(quat)
       .setCanSleep(false)
-      .setCcdEnabled(true)
+      // CCD off: at 60-68 m/s the swept box grazes every ramp lip and the CCD
+      // parks the body dead at the surface front, killing the forward speed.
+      // The soft-boundary force keeps cars from reaching the outer walls, so
+      // tunneling there is not a real concern.
+      .setCcdEnabled(false)
       .setGravityScale(0)
       .setLinearDamping(0.0)
       .setAngularDamping(0.35);
     const body = this.world.createRigidBody(rb);
     const colliderDesc = ColliderDesc.cuboid(CAR_HALF.x, CAR_HALF.y, CAR_HALF.z)
       .setCollisionGroups(packGroups(GROUPS.carNormal.membership, GROUPS.carNormal.filter))
+      // 0.02 (was 0.3): restitution 0.3 made grazing ramp edges pop cars into
+      // the sky through the solver's contact correction; the bump feel comes
+      // from the controller and the bump sound instead
       .setRestitution(this.cfg.physics.restitution)
       .setFriction(0.05)
       .setMass(CAR_MASS)
       .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
     const collider = this.world.createCollider(colliderDesc, body);
+
     this.handleKinds.set(collider.handle, { type: "car", sessionId });
     this.spawnTaken.add(spawnIndex);
     const view = makeCarView(body, this.world);

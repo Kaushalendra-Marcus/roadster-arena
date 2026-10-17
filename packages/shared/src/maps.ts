@@ -94,31 +94,21 @@ export function buildArenaDef(cfg: GameplayConfig): ArenaDef {
     { pos: { x: 40, y: 18, z: -140 }, forward: { x: 0.4, y: 0, z: 0.9 }, radius: 7 },
   );
 
-  // --- curved launch ramp (quarter-pipe, rise to 12 m) ------------------------
-  // approximated as a trimesh strip
+  // --- twin jump ramps (one runway x -127..-93, two 40° slopes) --------------
+  // The controller rides slopes it can catch (~≤45°), so the launch feature is
+  // a straight wedge: drive up, launch off the apex, land down the far side.
   {
-    const arcCX = -110;
-    const arcCZ = 110;
-    const R = 14;
-    const width = 10; // across the runway → z
-    const segs = 24;
-    const verts: number[] = [];
-    const idx: number[] = [];
-    // walk the arc from angle 250° down to -20° (quarter-ish sweep)
-    const a0 = Math.PI * 0.95;
-    const a1 = Math.PI * 0.0;
-    for (let s = 0; s <= segs; s++) {
-      const a = a0 + ((a1 - a0) * s) / segs;
-      // arc centre at (0,0) local; points on arc x = cx + R cos a, y = cy + R sin a
-      const px = R * Math.cos(a);
-      const py = Math.max(0.05, R + R * Math.sin(a));
-      verts.push(arcCX + px, py, arcCZ - width / 2);
-      verts.push(arcCX + px, py, arcCZ + width / 2);
-    }
-    for (let s = 0; s < segs; s++) {
-      const o = s * 2;
-      idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2);
-    }
+    const z0 = 105;
+    const z1 = 115;
+    const x0 = -127;
+    const x1 = -110; // apex
+    const x2 = -93;
+    const h = 14;
+    const verts: number[] = [
+      x0, 0.05, z0, x0, 0.05, z1, x1, h, z0, x1, h, z1, // up-slope quad
+      x1, h, z0, x1, h, z1, x2, 0.05, z0, x2, 0.05, z1, // down-slope quad
+    ];
+    const idx = [0, 1, 2, 1, 3, 2, 4, 5, 6, 5, 7, 6];
     colliders.push({
       kind: "ramp",
       pos: { x: 0, y: 0, z: 0 },
@@ -127,42 +117,59 @@ export function buildArenaDef(cfg: GameplayConfig): ArenaDef {
     });
   }
 
-  // --- full loop (vertical circular track you drive around the inside) -------
+  // --- full vertical loop as ONE continuous ride surface ----------------------
+  // The ray-pin controller follows whatever surface its −up ray hits first, so
+  // the ramp must BE the loop's bottom: an ease curve rises tangentially into
+  // the ring's lowest point, and the ring's left branch stops high enough that
+  // the arch never cuts through a car riding the ramp below it. Hold GRIP to
+  // round the loop; riding off the left branch's end launches you back out.
   {
     const loopX = 130;
     const loopZ = 120;
     const R = 17;
-    const width = 10;
-    const rampLen = 22; // straight-ish entry that lifts you to the loop start
-    const segs = 36;
+    const cy = R + 7; // ring centre; bottom apex (loopX, 7)
+    const width = 10; // across z
+    const cx0 = 95; // approach start
+    const apexY = 7; // cy - R
+    const zA = loopZ - width / 2;
+    const zB = loopZ + width / 2;
+
+    // stations: ease ramp from (95, 0.05) to the apex (130, 7), then the ring
+    // a from π (bottom) DOWN to π/2 (right side) and on to ≈ -2.55 rad
+    // (150° past the top), stopped at y ≈ 9.5 so the dead end is ~2.5 m
+    // above any car riding the ramp beneath it.
+    const aEnd = Math.acos((9.5 - cy) / R) * -1; // ≈ -2.55 rad
+    const stations: { x: number; y: number }[] = [];
+    const rampSegs = 24;
+    const ringSegs = 26;
+    // ease from a flush 0.05 lip to the apex; the lip is tiny enough that the
+    // contact solver just nudges the car onto the surface (full burial made
+    // the trimesh pierce the box from below and punch it into the sky)
+    for (let s = 0; s <= rampSegs; s++) {
+      const t = s / rampSegs;
+      const x = cx0 + (loopX - cx0) * t;
+      const y = 0.05 + (apexY - 0.05) * ((1 - Math.cos(Math.PI * t)) / 2);
+      stations.push({ x, y });
+    }
+    for (let s = 1; s <= ringSegs; s++) {
+      const a = Math.PI + ((aEnd - Math.PI) * s) / ringSegs;
+      stations.push({ x: loopX + R * Math.sin(a), y: Math.max(0.05, cy + R * Math.cos(a)) });
+    }
+
     const verts: number[] = [];
     const idx: number[] = [];
-    for (let s = 0; s <= segs; s++) {
-      const a = (TAU * s) / segs;
-      const cx = loopX;
-      const cy = R + 2;
-      const px = cx + R * Math.sin(a);
-      const py = Math.max(0.05, cy + R * Math.cos(a));
-      verts.push(px, py, loopZ - width / 2);
-      verts.push(px, py, loopZ + width / 2);
+    for (const st of stations) {
+      verts.push(st.x, st.y, zA, st.x, st.y, zB);
     }
-    for (let s = 0; s < segs; s++) {
+    for (let s = 0; s < stations.length - 1; s++) {
       const o = s * 2;
       idx.push(o, o + 1, o + 2, o + 1, o + 3, o + 2);
     }
-    // entry ramp
-    const entryVerts: number[] = [
-      loopX - R - rampLen, 0.05, loopZ - width / 2,
-      loopX - R - rampLen, 0.05, loopZ + width / 2,
-      loopX - R, R * 0.62, loopZ - width / 2,
-      loopX - R, R * 0.62, loopZ + width / 2,
-    ];
-    const entryIdx = [0, 1, 2, 1, 3, 2];
     colliders.push({
-      kind: "loop",
+      kind: "gripTrack",
       pos: { x: 0, y: 0, z: 0 },
-      vertices: [...verts, ...entryVerts],
-      indices: [...idx, ...entryIdx.map((i) => i + 2 * (segs + 1))],
+      vertices: verts,
+      indices: idx,
     });
   }
 

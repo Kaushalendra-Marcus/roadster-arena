@@ -13,8 +13,10 @@ export interface Hud {
   clearStatus(): void;
   welcome(roomName: string, players: number): void;
   speed(kmh: number, topSpeedMps: number): void;
-  gas(percent: number): void;
-  boost(state: "ready" | "cooldown" | "active"): void;
+  /** percent 0..100; airborne=true while hover/grip — the ring reads full white */
+  gas(percent: number, airborne?: boolean): void;
+  /** cooldown frac 0..1 (1 = ready) drives the chip's dim/glow */
+  boost(state: "ready" | "cooldown" | "active", frac?: number): void;
   mode(m: string): void;
   players(n: number): void;
   ping(ms: number): void;
@@ -84,15 +86,20 @@ export function createHud(): Hud {
       speedValue.textContent = String(Math.round(kmh));
       speedBar.style.width = `${Math.min(100, (kmh / (topSpeedMps * 3.6)) * 100)}%`;
     },
-    gas(percent) {
+    gas(percent, airborne = false) {
       const frac = Math.max(0, Math.min(1, percent / 100));
       gasRing.style.strokeDashoffset = String(GAS_CIRCUMFERENCE * (1 - frac));
-      gasRing.classList.toggle("low", percent < 40 && percent >= 15);
-      gasRing.classList.toggle("critical", percent < 15);
+      // Unlimited flight: while flying (hover/grip) the meter reads full and
+      // glows white instead of the ground-green fill; drain colours only
+      // apply on the ground, so a future tuning change still degrades nicely.
+      gasRing.classList.toggle("air", airborne);
+      gasRing.classList.toggle("low", !airborne && percent < 40 && percent >= 15);
+      gasRing.classList.toggle("critical", !airborne && percent < 15);
     },
-    boost(state) {
+    boost(state, frac = 1) {
       boostEl.classList.toggle("ready", state === "ready");
       boostEl.classList.toggle("active", state === "active");
+      boostEl.style.setProperty("--cd", String(Math.max(0, Math.min(1, frac))));
       boostEl.querySelector("small")!.textContent =
         state === "active" ? "firing" : state === "ready" ? "ready" : "cooling";
     },

@@ -157,12 +157,28 @@ export function quatSlerp(a: Quat, b: Quat, t: number): Quat {
   };
 }
 
-/** Ray down the car's -up axis; returns distance and surface normal. */
-function probeSurface(body: CarBodyView, maxDist: number): RayResult {
+/** Ray down the car's −up axis; returns distance and surface normal.
+ *  `ahead` shifts the ray origin forward along the car's fwd past the nose
+ *  and `tall` raises it by `tall` metres along −dir, both compensated out of
+ *  the reported distance — so the probe reads the surface profile that is
+ *  still ahead of the centre instead of reacting after the body hits it. */
+function probeSurface(
+  body: CarBodyView,
+  maxDist: number,
+  ahead = 0,
+  tall = 0,
+): RayResult {
   const p = body.translation;
-  const up = rotateVec({ ...body.rotation }, { x: 0, y: 1, z: 0 });
+  const rot = body.rotation;
+  const up = rotateVec(rot, { x: 0, y: 1, z: 0 });
+  const fwd = rotateVec(rot, { x: 0, y: 0, z: 1 });
   const dir = { x: -up.x, y: -up.y, z: -up.z };
-  const hit = body.raycast({ x: p.x, y: p.y, z: p.z }, dir, maxDist);
+  const origin = {
+    x: p.x + fwd.x * ahead + up.x * tall,
+    y: p.y + fwd.y * ahead + up.y * tall,
+    z: p.z + fwd.z * ahead + up.z * tall,
+  };
+  const hit = body.raycast(origin, dir, maxDist + tall);
   if (!hit || !hit.hit) {
     return { hit: false, distance: Infinity, normal: { x: 0, y: 1, z: 0 } };
   }
@@ -170,7 +186,7 @@ function probeSurface(body: CarBodyView, maxDist: number): RayResult {
   const hasNormal = Math.abs(n.x) + Math.abs(n.y) + Math.abs(n.z) > 1e-6;
   return {
     hit: true,
-    distance: hit.toi,
+    distance: Math.max(0.02, hit.toi - tall),
     normal: hasNormal ? normVec({ ...n }) : { x: up.x, y: up.y, z: up.z },
   };
 }
@@ -227,9 +243,14 @@ export function stepCar(
   // ---------- 3. probe + mode ----------------------------------------------
   const gripWanted = input.grip === true && sim.gas > 0.5;
   const hoverWanted = input.hover === true && sim.gas > 0.5;
-  // hover looks far ahead so the altitude servo keeps feedback at height
+  // hover looks far ahead so the altitude servo keeps feedback at height;
+  // ground/grip probes lean forward (1.5 m) and tall (3.2 m) so the servo
+  // sees an upcoming slope before the body can plough into it (tall rays
+  // reach over surfaces that would otherwise sit above the ray origin)
   const probeRange = gripWanted ? 6.0 : hoverWanted ? 30.0 : 2.6;
-  const surf = probeSurface(body, probeRange);
+  const ahead = hoverWanted ? 0 : 2.1; // past the nose (half-length 2.05)
+  const tall = hoverWanted ? 0 : 3.2;
+  const surf = probeSurface(body, probeRange, ahead, tall);
   const grounded = surf.hit && surf.distance <= CAR_TARGET_CLEARANCE + 0.08;
 
   const boostWindowMs = Math.round(ctx.cfg.boost.duration * 1000);
@@ -255,9 +276,10 @@ export function stepCar(
   // 4a. pin spring — hold the target clearance above the surfac
   if (surf.hit && (grounded || mode === "grip")) {
     const err = surf.distance - CAR_TARGET_CLEARANCE;
-    const spring = mode === "grip" ? 55 : 36;
-    // negative err (too close / penetrating) pushes out along +normal,
-    // positive err (too high) pulls in along -normal
+    // One stiff spring for both modes: heavier springs shrink the
+    // slope-following lag (lag ≈ slope·speed/spring), so the clearance
+    // survives ramp entries without the surface reaching the body.
+    const spring = 140;
     const corr = -err * spring;
     v.x += surf.normal.x * corr * dt;
     v.y += surf.normal.y * corr * dt;
@@ -391,13 +413,12 @@ export function stepCar(
   } else if (grounded || mode === "grip" || mode === "hover") {
     body.setAngvel({ x: 0, y: 0, z: 0 }, true);
 
-    // align the body to the surface normal while keeping the heading
-    const upTarget: Vec =
-      mode === "grip" && surf.hit
-        ? normVec({ x: -surf.normal.x, y: -surf.normal.y, z: -surf.normal.z })
-        : grounded && surf.hit
-          ? normVec(surf.normal)
-          : u0;
+    // align the body to the surface normal while keeping the heading.
+    // Rapier already orients the hit normal toward the ray origin (the car's
+    // up side), so this is the same fix for floor, ceiling, wall and the
+    // inside of the vertical loop — never negate it (that made grip latches
+    // flip the car upside-down on flat ground).
+    const upTarget: Vec = grounded || mode === "grip" ? (surf.hit ? normVec(surf.normal) : u0) : u0;
     if (dot(upTarget, u0) < 0.9995) {
       const alignRight = normVec(cross(upTarget, fwd));
       const alignFwd = normVec(cross(alignRight, upTarget));
@@ -408,7 +429,10 @@ export function stepCar(
     }
   }
 
-  // ---------- 8. gas meter (spec 6.2) ----------------------------------------
+  // ---------- 8. gas meter (spec 6.2, updated: flight is unlimited) ---------
+  // With the shipped tuning the drains and boost cost are 0, so gas never
+  // leaves the start value (unlimited hover/grip/boost). The meter stays
+  // config-driven: enabling a drain here immediately makes the resource live.
   if (mode === "hover") sim.gas = Math.max(0, sim.gas - ctx.cfg.gas.hoverDrainPerSecond * dt);
   else if (mode === "grip") sim.gas = Math.max(0, sim.gas - ctx.cfg.gas.gripDrainPerSecond * dt);
   else if (grounded && mode === "ground" && input.grip !== true) {

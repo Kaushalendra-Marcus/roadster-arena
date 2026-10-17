@@ -133,14 +133,13 @@ describe("stepCar (shared arcade controller)", () => {
     expect(sim.gas).toBeCloseTo(CFG.gas.max, 0);
   });
 
-  it("drains gas while hovering and holds altitude", () => {
+  it("hover is unlimited: holds altitude with gas untouched", () => {
     const { state, view } = makeBody({ y: 0.62 });
     const sim = makeSim(view);
-    // first tick lifts off (hover resolves from the ground); 3 s so the
-    // 25/s drain cannot empty the tank mid-test
+    // drains shipped as 0 → flight is unlimited and the meter never moves
     drive(sim, { ...idle, hover: true }, 60 * 3);
     expect(sim.mode).toBe("hover");
-    expect(sim.gas).toBeLessThan(CFG.gas.max);
+    expect(sim.gas).toBe(CFG.gas.max);
     expect(state.translation.y).toBeGreaterThan(2.5); // hoverTargetHeight 3
     expect(state.translation.y).toBeLessThan(5);
   });
@@ -157,11 +156,12 @@ describe("stepCar (shared arcade controller)", () => {
     expect(Math.hypot(state.linvel.x, state.linvel.z)).toBeGreaterThan(5);
   });
 
-  it("boost burns gas, bursts forward, then cools down", () => {
+  it("boost bursts forward freely, then cools down", () => {
     const { state, view } = makeBody({ y: 0.62 });
     const sim = makeSim(view);
     drive(sim, { ...idle, throttle: 1, boost: true }, 3);
-    expect(sim.gas).toBe(CFG.gas.max - CFG.gas.boostCost);
+    // boost cost shipped as 0 → gas is unlimited; the cooldown is the gate
+    expect(sim.gas).toBe(CFG.gas.max);
     const boosted = Math.hypot(state.linvel.x, state.linvel.z);
     // well above what base throttle gives in 3 ticks
     expect(boosted).toBeGreaterThan(6);

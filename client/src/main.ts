@@ -48,6 +48,7 @@ let tickAcc = 0;
 let lastFrameMs = 0;
 let pingAt = 0;
 let deathRespawnAt = 0;
+let bannerTimer: ReturnType<typeof setTimeout> | undefined;
 
 // camera state (chase spring)
 let camYaw = 0;
@@ -264,8 +265,14 @@ function onStatePatch(state: ArenaState): void {
   }
   if (me && predictor) {
     predictor.reconcile(ownSnapshot(me), performance.now());
-    hud.gas(me.gas);
+    hud.gas(me.gas, me.mode === "hover" || me.mode === "grip");
     hud.mode(me.mode);
+    // hard snap while the server says spawn protection is on = we respawned
+    if (predictor.snapped && me.ghostUntil > 0) {
+      hud.respawnBanner(true);
+      clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(() => hud.respawnBanner(false), 1600);
+    }
     if (me.emoteId) {
       const em = pickEmote(me.emoteId);
       if (em) hud.emote(em.name, em.glyph);
@@ -434,7 +441,17 @@ function frame(nowMs: number): void {
     const v = predictor.sim.body.linvel;
     hud.speed(Math.hypot(v.x, v.y, v.z) * 3.6, CFG.physics.topSpeed);
     const meMode = me?.mode ?? predictor.sim.mode;
-    hud.boost(meMode === "boost" ? "active" : predictor.sim.gas >= CFG.gas.boostCost ? "ready" : "cooldown");
+    const simMode = predictor.sim.mode;
+    hud.gas(predictor.sim.gas, simMode === "hover" || simMode === "grip");
+    // boost chip tracks the real cooldown window from the local sim's
+    // boostUsedAtMs (deterministic mirror of the server's clock)
+    const coolMs = Math.round(CFG.boost.cooldown * 1000);
+    const sinceBoost = nowMs - predictor.sim.boostUsedAtMs;
+    const cdFrac = Number.isFinite(sinceBoost) ? Math.min(1, sinceBoost / coolMs) : 1;
+    hud.boost(
+      meMode === "boost" ? "active" : sinceBoost < coolMs ? "cooldown" : "ready",
+      cdFrac,
+    );
   }
   if (nowMs - pingAt > 2000 && net) {
     pingAt = nowMs;
@@ -472,8 +489,8 @@ function updateCamera(pos: Vec3Like, q: QuatLike, dtMs: number, drive: { steer: 
   const yaw = atan2lerp(camYaw, Math.atan2(sin, cos), Math.min(1, dtMs / 200));
   camYaw = yaw;
 
-  const dist = 8.4;
-  const height = 3.2;
+  const dist = 6.2;
+  const height = 2.05;
   const target = {
     x: pos.x - Math.sin(yaw) * dist,
     y: pos.y + height,
@@ -481,7 +498,7 @@ function updateCamera(pos: Vec3Like, q: QuatLike, dtMs: number, drive: { steer: 
   };
   const lookAt = {
     x: pos.x + Math.sin(yaw) * 8,
-    y: pos.y + 1.2,
+    y: pos.y + 0.62,
     z: pos.z + Math.cos(yaw) * 8,
   };
   const k = Math.min(1, dtMs / 85);

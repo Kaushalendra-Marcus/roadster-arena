@@ -98,15 +98,18 @@ export const DEFAULT_GAMEPLAY: GameplayConfig = {
     hoverTargetHeight: 3.0,
     gripAccel: 34.0,
     maxTerrainPitchAlign: 7.5,
-    restitution: 0.3,
+    restitution: 0.02,
     maxW: 20,
   },
   gas: {
     max: 100,
     start: 100,
-    hoverDrainPerSecond: 25,
-    gripDrainPerSecond: 15,
-    boostCost: 40,
+    // unlimited flight (design update): drains are 0 so hover and grip never
+    // time out and boost is gated by its cooldown alone — the meter only
+    // moves if a future tuning pass re-enables costs here.
+    hoverDrainPerSecond: 0,
+    gripDrainPerSecond: 0,
+    boostCost: 0,
     rechargePerSecond: 20,
     rechargeOnlyWhenGrounded: true,
   },
