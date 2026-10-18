@@ -24,6 +24,9 @@ export interface BoxDef {
   angle?: number;
   /** restitution override for this collider */
   restitution?: number;
+  /** client hint: a GLB kit model wraps this footprint, so the client skips
+   *  its procedural facade/window dressing (the shell replaces it) */
+  kit?: boolean;
 }
 
 export interface TrimeshDef {
@@ -117,32 +120,39 @@ export const CITY_CELLS: CityCell[] = [
 
 /** building footprints per theme (offsets relative to the cell centre) */
 export const THEME_BUILDINGS: Record<CityTheme, CityBuilding[]> = {
-  // kit-covered cells: footprints are sized to the source models' aspect
-  // ratios (matches KIT_SLOTS in client/src/city.ts) so the uniform fit
-  // lands around 1:1 and the collider perfectly wraps the visible shell.
+  // kit-covered cells: every footprint below is sized to its source model's
+  // aspect ratio (matches KIT_SLOTS in client/src/city.ts) so the uniform
+  // fit lands 1:1 and the visible shell wraps the collider exactly. All 19
+  // buildings of new_york_buildings.glb are placed somewhere in the city.
   towers: [
-    { dx: -30, dz: 0, hw: 4, hd: 4, h: 48 }, // Empire State
-    { dx: 24, dz: -26, hw: 3.8, hd: 3.8, h: 42 }, // Woolworth
-    { dx: 26, dz: 27, hw: 3.45, hd: 3.45, h: 46 }, // Chrysler
+    { dx: -30, dz: 0, hw: 3.64, hd: 3.64, h: 48 }, // Empire State
+    { dx: 24, dz: -26, hw: 3.32, hd: 3.32, h: 42 }, // Woolworth
+    { dx: 26, dz: 27, hw: 3.11, hd: 3.21, h: 46 }, // Chrysler
+    { dx: -6, dz: -30, hw: 2.27, hd: 4.11, h: 44 }, // New York Times
+    { dx: 2, dz: 12, hw: 3.24, hd: 12.13, h: 44 }, // tower one (slab)
+    { dx: -34, dz: 34, hw: 4.2, hd: 10.49, h: 30 }, // MetLife
   ],
   offices: [
-    { dx: -24, dz: -24, hw: 3.05, hd: 3.05, h: 40 }, // g2 glass tower
-    { dx: 22, dz: 0, hw: 5.53, hd: 3.7, h: 32 }, // g5 glass slab
-    { dx: -22, dz: 26, hw: 3.15, hd: 3.15, h: 34 }, // g6 glass tower
+    { dx: -24, dz: -24, hw: 2.64, hd: 2.71, h: 40 }, // g2 glass tower
+    { dx: 22, dz: 0, hw: 5.15, hd: 3.28, h: 32 }, // g5 glass slab
+    { dx: -22, dz: 26, hw: 2.66, hd: 2.92, h: 34 }, // g6 glass tower
+    { dx: 0, dz: -34, hw: 3.94, hd: 3.94, h: 20 }, // g4 mid-rise
+    { dx: 40, dz: 24, hw: 3.16, hd: 3.16, h: 38 }, // g3 glass tower
+    { dx: -40, dz: 0, hw: 3.06, hd: 3.06, h: 36 }, // g1 tower
   ],
   civic: [
-    { dx: -20, dz: -20, hw: 4, hd: 8.45, h: 14 }, // Flatiron (police HQ)
-    { dx: 26, dz: 24, hw: 1.95, hd: 3.4, h: 11 }, // precinct annex
+    { dx: -20, dz: -20, hw: 3.86, hd: 8.37, h: 14 }, // Flatiron (police HQ)
+    { dx: 26, dz: 24, hw: 1.82, hd: 3.0, h: 11 }, // precinct annex
   ],
   hospital: [
-    { dx: -8, dz: -6, hw: 6.05, hd: 6.05, h: 26 }, // modern night tower
-    { dx: 22, dz: 14, hw: 10, hd: 7, h: 11 },
+    { dx: -8, dz: -6, hw: 5.74, hd: 5.74, h: 26 }, // modern night tower
+    { dx: 22, dz: 14, hw: 2.48, hd: 7.46, h: 12 }, // ward wing
   ],
   shops: [
-    { dx: -32, dz: -30, hw: 2.2, hd: 2.2, h: 13 }, // brownstone
-    { dx: 30, dz: -32, hw: 3.3, hd: 5.5, h: 11 },
-    { dx: 33, dz: 30, hw: 1.95, hd: 3.9, h: 14 },
-    { dx: -30, dz: 32, hw: 2.7, hd: 3.7, h: 11 },
+    { dx: -32, dz: -30, hw: 1.77, hd: 1.77, h: 13 }, // b1 brownstone
+    { dx: 30, dz: -32, hw: 2.93, hd: 5.28, h: 11 }, // b2
+    { dx: 33, dz: 30, hw: 1.8, hd: 3.95, h: 14 }, // b4
+    { dx: -30, dz: 32, hw: 2.29, hd: 3.39, h: 11 }, // b6
   ],
   homes: [
     { dx: -30, dz: -28, hw: 4.5, hd: 3.5, h: 6.5 },
@@ -166,6 +176,9 @@ export const THEME_BUILDINGS: Record<CityTheme, CityBuilding[]> = {
   park: [],
   curlPark: [],
 };
+
+/** themes whose buildings are wrapped by a GLB kit model on the client */
+const KIT_THEMES: ReadonlySet<CityTheme> = new Set(["towers", "offices", "civic", "hospital", "shops"]);
 
 const TAU = Math.PI * 2;
 
@@ -210,12 +223,16 @@ export function buildArenaDef(cfg: GameplayConfig): ArenaDef {
   // Every themed building below gets an authoritative Rapier collider; the
   // client renders the same table (plus streets, trees and props) from the
   // exported constants above, so physics and visuals can never drift apart.
+  // Kit themes get a GLB shell on the client; the flag tells it to skip the
+  // procedural facade dressing that those shells would otherwise hide.
   for (const cell of CITY_CELLS) {
+    const kit = KIT_THEMES.has(cell.theme);
     for (const b of THEME_BUILDINGS[cell.theme]) {
       colliders.push({
         kind: "block",
         pos: { x: cell.x + b.dx, y: b.h / 2, z: cell.z + b.dz },
         half: { x: b.hw, y: b.h / 2, z: b.hd },
+        kit,
       });
     }
   }

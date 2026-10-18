@@ -2,7 +2,8 @@
  * City dressing (spec 8 companion): every visual that has no collider —
  * streets, lane dashes, crosswalks, sidewalks, per-cell plates, park and
  * basketball court, solar farm, pools, helipad, house roofs, trees, lamps,
- * parked cars, wind turbines, fountain — plus the two GLB building kits.
+ * parked cars, wind turbines, fountain — plus the GLB building kits and the
+ * drifting hot-air balloons.
  *
  * Everything derives from the exported CITY tables in maps.ts (streets,
  * cells, themed footprints), so physics and visuals cannot drift apart.
@@ -385,7 +386,6 @@ function buildProps(scene: THREE.Scene, cars: Item[]): void {
   instanced(scene, new THREE.IcosahedronGeometry(2.7, 0), new THREE.MeshStandardMaterial({ roughness: 0.9 }), trees.map((t) => ({ ...t, y: 4.6, sy: 1.25 })), true);
 
   // wind turbines along the northern belt
-  const bladesList: THREE.Mesh[] = [];
   const white = new THREE.MeshStandardMaterial({ color: 0xe8ecee, roughness: 0.6, metalness: 0.15 });
   for (const [tx, tz] of [[-250, -281], [-160, -283], [200, -282], [277, -238]] as const) {
     const tower = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.15, 27, 10), white);
@@ -397,6 +397,7 @@ function buildProps(scene: THREE.Scene, cars: Item[]): void {
     scene.add(nacelle);
     const hub = new THREE.Group();
     hub.position.set(tx, 27.3, tz + 1.9);
+    const arms: THREE.Group[] = [];
     for (let b = 0; b < 3; b++) {
       const blade = new THREE.Mesh(new THREE.BoxGeometry(0.55, 11, 0.14), white);
       blade.position.y = 5.5;
@@ -404,17 +405,16 @@ function buildProps(scene: THREE.Scene, cars: Item[]): void {
       arm.add(blade);
       arm.rotation.z = (b * Math.PI * 2) / 3;
       hub.add(arm);
+      arms.push(arm);
     }
-    let lastT = performance.now();
-    hub.onBeforeRender = () => {
-      const now = performance.now();
-      hub.rotation.z += Math.min(0.1, (now - lastT) / 1000) * 1.3;
-      lastT = now;
+    // three only fires onBeforeRender for renderable meshes — a Group hook
+    // never runs, so the spin is driven from the first blade and derives
+    // from absolute time (idempotent, no per-tick integration to drift)
+    (arms[0].children[0] as THREE.Mesh).onBeforeRender = () => {
+      hub.rotation.z = (performance.now() / 1000) * 1.3;
     };
-    bladesList.push(hub.children[0].children[0] as THREE.Mesh);
     scene.add(hub);
   }
-  void bladesList;
 
   // roundabout fountain island (collider half 5 in maps.ts)
   const stone = new THREE.MeshStandardMaterial({ color: 0xb9c2c6, roughness: 0.75 });
@@ -466,12 +466,17 @@ function label(scene: THREE.Scene, text: string, colour: string, x: number, y: n
 
 function buildingKits(scene: THREE.Scene): void {
   // kit model per footprint slot (footprints in maps.ts are sized to these
-  // models' aspect ratios; names come straight from new_york_buildings.glb)
+  // models' aspect ratios so the uniform fit wraps each collider exactly).
+  // Every building in new_york_buildings.glb is placed: emp_state / woolworth
+  // / christler / new_york_times / tower_one / metlife downtown, g1–g6 in the
+  // office district, b1–b6 in the shops + civic rows, and the modern-night
+  // tower as the hospital.
   const KIT_SLOTS: Partial<Record<string, string[]>> = {
-    towers: ["emp_state", "woolworth", "christler"],
-    offices: ["g2", "g5", "g6"],
+    towers: ["emp_state", "woolworth", "christler", "new_york_times", "tower_one", "metlife"],
+    offices: ["g2", "g5", "g6", "g4", "g3", "g1"],
     shops: ["b1", "b2", "b4", "b6"],
     civic: ["flatiron", "b3"],
+    hospital: ["", "b5"], // slot 0 is the modern-night tower (own loader below)
   };
   const loader = new GLTFLoader();
   loader.load(
@@ -492,9 +497,11 @@ function buildingKits(scene: THREE.Scene): void {
         const slots = KIT_SLOTS[cell.theme];
         if (!slots) continue;
         THEME_BUILDINGS[cell.theme].forEach((b, i) => {
+          const prefix = slots[i];
+          if (!prefix) return; // empty slot: another loader owns it (hospital tower)
           const v =
-            variants.find((cand) => cand.name.startsWith(slots[i])) ??
-            variants[(i + Math.abs(cell.x + cell.z) / 6) % variants.length];
+            variants.find((cand) => cand.name.startsWith(prefix)) ??
+            variants[Math.floor(i + Math.abs(cell.x + cell.z) / 6) % variants.length];
           if (!v) return;
           const model = v.child.clone(true);
           // bake the source world transform onto the clone (up-axis fixes
@@ -578,6 +585,81 @@ function buildingKits(scene: THREE.Scene): void {
   );
 }
 
+// ============================== hot-air balloons ===========================
+
+function buildBalloons(scene: THREE.Scene): void {
+  // Decorative sky dressing — deliberately collider-free: the fantasy balloon
+  // (≈ 11 m from basket floor to envelope crown in source units) drifts over
+  // four districts, well clear of the ramp, the gates and the tallest roofs.
+  const SPOTS = [
+    { x: -102, y: 46, z: -202, s: 1.7 }, // over the park
+    { x: 214, y: 36, z: 34, s: 1.45 }, // above the showroom forecourt
+    { x: 26, y: 58, z: -26, s: 1.85 }, // high over the plaza
+    { x: -216, y: 36, z: 168, s: 1.3 }, // over the south-west homes
+  ];
+  const TINTS = [0, 0.06, -0.07, 0.1]; // envelope hue shift per balloon
+  const loader = new GLTFLoader();
+  loader.load(
+    "/assets/reference/fantasy_hot_air_balloon__free_3d_asset_glb.glb",
+    (gltf) => {
+      const source = gltf.scene;
+      const raw = new THREE.Box3().setFromObject(source);
+      const ctr = raw.getCenter(new THREE.Vector3());
+      SPOTS.forEach((spot, i) => {
+        const model = source.clone(true);
+        // clone the envelope material before tinting so the hue shift stays
+        // per-balloon (clone(true) shares materials between instances)
+        const envelope = model.getObjectByName("Globo_0");
+        const tint = TINTS[i % TINTS.length];
+        if (envelope && tint !== 0) {
+          envelope.traverse((o) => {
+            const mesh = o as THREE.Mesh;
+            if (!mesh.isMesh || Array.isArray(mesh.material)) return;
+            const std = mesh.material as THREE.MeshStandardMaterial;
+            if (!("color" in std)) return;
+            mesh.material = std.clone();
+            (mesh.material as THREE.MeshStandardMaterial).color.offsetHSL(tint, 0, 0);
+          });
+        }
+        model.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          mesh.castShadow = true;
+          mesh.receiveShadow = false;
+        });
+        model.position.set(-ctr.x, -ctr.y, -ctr.z); // origin = balloon centre
+        const group = new THREE.Group();
+        group.add(model);
+        group.position.set(spot.x, spot.y, spot.z);
+        group.scale.setScalar(spot.s);
+        // absolute-time drift — idempotent, so calling it once per rendered
+        // balloon mesh per frame is safe (three fires mesh hooks, not group
+        // hooks — same reason the turbines animate from a blade mesh)
+        const phase = i * 2.1;
+        const baseYaw = i * 1.7;
+        const drift = () => {
+          const t = performance.now() / 1000;
+          group.position.set(
+            spot.x + Math.sin(t * 0.16 + phase) * 6,
+            spot.y + Math.sin(t * 0.5 + phase) * 1.6,
+            spot.z + Math.cos(t * 0.12 + phase) * 6,
+          );
+          group.rotation.y = baseYaw + t * 0.05 + Math.sin(t * 0.23 + phase) * 0.12;
+        };
+        model.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (mesh.isMesh) mesh.onBeforeRender = drift;
+        });
+        scene.add(group);
+      });
+    },
+    undefined,
+    () => {
+      /* balloons are optional dressing: skip silently if the asset is absent */
+    },
+  );
+}
+
 // ============================== entry ======================================
 
 export function buildCity(scene: THREE.Scene): void {
@@ -586,4 +668,5 @@ export function buildCity(scene: THREE.Scene): void {
   for (const cell of CITY_CELLS) buildCell(scene, cell, cars);
   buildProps(scene, cars);
   buildingKits(scene);
+  buildBalloons(scene);
 }

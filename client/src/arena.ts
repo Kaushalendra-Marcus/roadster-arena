@@ -145,7 +145,11 @@ export function createArenaView(canvas: HTMLCanvasElement, cfg: GameplayConfig, 
     m.castShadow = c.kind === "block";
     scene.add(m);
 
-    if (c.kind === "block" && c.half.y > 2.5) {
+    // Procedural facade for plain blocks. Kit-wrapped blocks (c.kit) skip it
+    // entirely: the GLB shell sits just outside the collider and replaces the
+    // building, so hidden windows/roof/plant boxes would only poke through —
+    // and skipping saves hundreds of invisible meshes.
+    if (c.kind === "block" && !c.kit && c.half.y > 2.5) {
       const facade = new THREE.MeshStandardMaterial({
         color: 0x68717c,
         roughness: 0.72,
@@ -197,9 +201,9 @@ export function createArenaView(canvas: HTMLCanvasElement, cfg: GameplayConfig, 
     }
   }
 
-  // City dressing: streets, blocks, props and the two GLB building kits
-  // all derive from the shared CITY tables; the colliders above stay
-  // authoritative. See city.ts.
+  // City dressing: streets, props, the GLB building kits and the drifting
+  // hot-air balloons all derive from the shared CITY tables; the colliders
+  // above stay authoritative. See city.ts.
   {
     buildCity(scene);
 
