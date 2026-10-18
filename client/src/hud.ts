@@ -20,6 +20,8 @@ export interface Hud {
   mode(m: string): void;
   players(n: number): void;
   ping(ms: number): void;
+  score(value: number): void;
+  testStatus(text: string, active: boolean): void;
   respawnBanner(v: boolean): void;
   emote(name: string, glyph: string): void;
   scoreboard(state: ArenaState, meId: string): void;
@@ -48,25 +50,31 @@ export function createHud(): Hud {
   const playersCount = $("players-count");
   const roomName = $("room-name");
   const pingValue = $("ping-value");
+  const scoreValue = $("score-value");
+  const testStatusEl = $("test-status");
   const respawnBanner = $("hud-respawn");
   const emotePop = $("emote-pop");
   const touchControls = $("touch-controls");
   const scoreboard = $("scoreboard");
   const scoreRows = $("score-rows");
+  const hudRoot = $("hud");
   let respawnVisible = false;
 
   return {
     showGame() {
       landing.classList.add("hidden");
       game.classList.remove("hidden");
+      hudRoot.classList.add("hidden");
     },
     showLanding() {
       landing.classList.remove("hidden");
       game.classList.add("hidden");
+      hudRoot.classList.add("hidden");
       scoreboard.classList.add("hidden");
     },
     showJoinOverlay(v) {
       joinOverlay.classList.toggle("hidden", !v);
+      if (v) hudRoot.classList.add("hidden");
     },
     status(text, level = "info") {
       connStatus.textContent = text;
@@ -116,6 +124,13 @@ export function createHud(): Hud {
       pingValue.textContent = String(ms);
       pingValue.className = ms < 80 ? "good" : ms < 180 ? "mid" : "bad";
     },
+    score(value) {
+      scoreValue.textContent = Math.max(0, Math.round(value)).toLocaleString();
+    },
+    testStatus(text, active) {
+      testStatusEl.textContent = text;
+      testStatusEl.classList.toggle("hidden", !active);
+    },
     respawnBanner(v) {
       respawnVisible = v;
       respawnBanner.classList.toggle("hidden", !v);
@@ -138,7 +153,7 @@ export function createHud(): Hud {
         const tr = document.createElement("tr");
         if (p.id === meId) tr.className = "me";
         const speed = Math.round(Math.hypot(p.vx, p.vy, p.vz) * 3.6);
-        tr.innerHTML = `<td>${i++}</td><td>${p.name}</td><td>${p.mode}</td><td>${speed}</td>`;
+        tr.innerHTML = `<td>${i++}</td><td>${p.name}</td><td>${p.score.toLocaleString()}</td><td>${p.mode}</td><td>${speed}</td>`;
         rows.push(tr);
       }
       scoreRows.replaceChildren(...rows);

@@ -31,6 +31,7 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
   let touchThrottle = 0;
   const touchModes = { hover: false, boost: false, grip: false };
   let touchActive = false;
+  let brakeHeld = false;
 
   const onKey = (e: KeyboardEvent, down: boolean) => {
     const k = e.key.toLowerCase();
@@ -132,6 +133,21 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
   bindHold("boost");
   bindHold("grip");
 
+  const brakeButton = document.getElementById("hud-brake");
+  const brakeOn = (e: Event) => {
+    brakeHeld = true;
+    brakeButton?.classList.add("down");
+    e.preventDefault();
+  };
+  const brakeOff = () => {
+    brakeHeld = false;
+    brakeButton?.classList.remove("down");
+  };
+  brakeButton?.addEventListener("pointerdown", brakeOn);
+  brakeButton?.addEventListener("pointerup", brakeOff);
+  brakeButton?.addEventListener("pointercancel", brakeOff);
+  brakeButton?.addEventListener("pointerleave", brakeOff);
+
   const axis = (neg: string[], pos: string[]): number => {
     const n = neg.some((k) => keys.has(k));
     const p = pos.some((k) => keys.has(k));
@@ -144,6 +160,7 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
       // throttle on W/S only — the arrow keys own pitch (hover climb / air
       // thrust) so driving and vertical control stay independent
       let throttle = axis(["s"], ["w"]);
+      if (brakeHeld) throttle = -1;
       let steer = axis(["a", "arrowleft"], ["d", "arrowright"]);
       if (touchActive) {
         if (Math.abs(touchThrottle) > 0.05) throttle = touchThrottle;
@@ -185,6 +202,10 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
       removeEventListener("keyup", ku);
       document.removeEventListener("pointerlockchange", onPointerLockChange);
       removeEventListener("mousemove", onMouseMove);
+      brakeButton?.removeEventListener("pointerdown", brakeOn);
+      brakeButton?.removeEventListener("pointerup", brakeOff);
+      brakeButton?.removeEventListener("pointercancel", brakeOff);
+      brakeButton?.removeEventListener("pointerleave", brakeOff);
     },
     get touchActive() {
       return touchActive;

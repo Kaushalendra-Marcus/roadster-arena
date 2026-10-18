@@ -40,6 +40,8 @@ import { getEnv } from "../env.js";
 interface CarEntry {
   /** authoritative per-car sim values (gas, boost timing, ghost, roll tap) */
   sim: CarSim;
+  /** most recent validated controls; the physics tick runs even between packets */
+  lastInput: DriveInput;
   car: CarBody;
   ipAddress: string | undefined;
   lastRespawnRequestMs: number;
@@ -158,6 +160,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
       vz: 0,
       mode: "ground",
       gas: this.cfg.gas.start,
+      score: 0,
       lastProcessedInput: 0,
       emoteId: "",
       emoteAt: 0,
@@ -178,6 +181,16 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
         rollDir: 0,
         lastProcessedInput: 0,
       },
+      lastInput: {
+        throttle: 0,
+        steer: 0,
+        pitch: 0,
+        roll: 0,
+        yaw: 0,
+        hover: false,
+        boost: false,
+        grip: false,
+      },
       car: carBody,
       ipAddress: userData.ip,
       lastRespawnRequestMs: 0,
@@ -193,6 +206,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
       id: client.sessionId,
       roomId: this.roomId,
       playerCount: this.cars.size,
+      roomName: this.roomsCfg.roomDisplayName,
+      serverVersion: "1",
     });
     this.broadcast(MESSAGES.playerJoined, {
       id: client.sessionId,
@@ -226,6 +241,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
       id: client.sessionId,
       roomId: this.roomId,
       playerCount: this.cars.size,
+      roomName: this.roomsCfg.roomDisplayName,
+      serverVersion: "1",
       reconnected: true,
     });
   }
@@ -287,18 +304,28 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
   private tick(ctx: StepContext): void {
     const now = this.clock.currentTime;
 
-    // 1) consume one buffered input per car per tick (spec 5.2: 60 Hz step,
-    //    30 Hz input; idle frames hold the sticks without bumping the ack)
+    // 1) consume at most one buffered input per car per tick (spec 5.2:
+    //    60 Hz step, 30 Hz input), then hold it between packets. The physics
+    //    must advance every tick even when the input buffer is temporarily
+    //    empty, otherwise cars stutter and prediction constantly corrects.
     for (const [sessionId, entry] of this.cars) {
       const accessor = this.inputs.get(sessionId);
       const input = accessor.next();
-      if (!input) continue;
-      entry.sim.lastProcessedInput = accessor.consumedCount;
-      stepCar(entry.sim, input as unknown as DriveInput, {
+      if (input && typeof input === "object") {
+        entry.lastInput = input as unknown as DriveInput;
+        entry.sim.lastProcessedInput = accessor.consumedCount;
+      }
+      stepCar(entry.sim, entry.lastInput, {
         cfg: this.cfg,
         dt: ctx.dt,
         nowMs: now,
       });
+      const velocity = entry.car.body.linvel();
+      const player = this.state.players.get(sessionId);
+      if (player) {
+        // One point per metre driven, with a small airborne speed bonus.
+        player.score += Math.max(0, Math.round(Math.hypot(velocity.x, velocity.y, velocity.z) * ctx.dt * 0.8));
+      }
     }
 
     // 2) solver step; contact/gate events come out of the queue
@@ -369,6 +396,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
           v.x * gate.forward.x + v.y * gate.forward.y + v.z * gate.forward.z;
         if (along < 3) return; // crossing the plane the wrong way: nothing
         entry.lastGateMs.set(gateKind.gateIndex, now);
+        const player = this.state.players.get(carSession);
+        if (player) player.score += 250;
         entry.car.body.setLinvel(
           {
             x: v.x + gate.forward.x * this.cfg.gate.boostImpulse,
@@ -429,6 +458,7 @@ function writeState(player: CarPlayer, sim: CarSim, car: CarBody): void {
   player.vz = vel.z;
   player.mode = sim.mode;
   player.gas = sim.gas;
+  // score is accumulated directly on the player state
   player.lastProcessedInput = sim.lastProcessedInput;
   player.ghostUntil = sim.ghostUntilMs;
 }

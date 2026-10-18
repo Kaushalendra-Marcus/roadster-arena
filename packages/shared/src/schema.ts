@@ -29,6 +29,8 @@ export const CarPlayer = schema(
     mode: t.string(),
     /** 0..100 */
     gas: t.int16().default(100),
+    /** race score: distance travelled plus gate bonuses */
+    score: t.int32().default(0),
     /** sequence number of the last input the server processed */
     lastProcessedInput: t.int32().default(0),
     /** id from emotes.ts, empty string when none pending */

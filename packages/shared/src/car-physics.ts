@@ -502,7 +502,9 @@ export function stepCar(
   if (airborne) {
     const upNow = rotateVec(q, { x: 0, y: 1, z: 0 });
     const rightNow = normVec(cross(upNow, fwd));
-    const pitchRate = pitch * ph.airPitchTorque;
+    // Arrow Up/Down controls vertical thrust only. Continuous pitch torque
+    // made holding Arrow Up produce an unintended endless front flip.
+    const pitchRate = 0;
     let rollRate = 0;
     if (sim.rollUntilMs > nowMs) rollRate = sim.rollDir * ph.airTorqueSnapRoll;
     else if (rollRaw !== 0) rollRate = rollRaw * ph.airRollTorque;
@@ -632,7 +634,7 @@ export function stepCar(
     // ground steering keeps working); when the nose dives INTO the surface
     // (loop wall entry) fall back to the arena's planar ascent direction.
     const fN = dot(fwd, n);
-    let proj: Vec = { x: fwd.x - n.x * fN, y: fwd.y - n.y * fN, z: fwd.z - n.z * fN };
+    const proj: Vec = { x: fwd.x - n.x * fN, y: fwd.y - n.y * fN, z: fwd.z - n.z * fN };
     const projMag = Math.hypot(proj.x, proj.y, proj.z);
     let rail: Vec;
     if (projMag > 0.4) {

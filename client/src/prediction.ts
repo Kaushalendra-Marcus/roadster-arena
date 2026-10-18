@@ -43,6 +43,7 @@ export class Predictor {
   private pending: PendingInput[] = [];
   private seq = 0;
   private view: CarBodyView;
+  private simNowMs = Number.NaN;
   /** set when a correction exceeded the snap threshold this patch */
   snapped = false;
   /** ms timestamp of the last server patch (performance.now) */
@@ -149,9 +150,11 @@ export class Predictor {
     // drop consumed inputs; replay the rest deterministically
     this.pending = this.pending.filter((p) => p.seq > s.lastProcessedInput);
     const startMs = renderNowMs - this.pending.length * (1000 / 60);
+    this.simNowMs = startMs;
     for (let i = 0; i < this.pending.length; i++) {
       const p = this.pending[i];
-      stepCar(this.sim, p.input, { cfg: this.cfg, dt: 1 / 60, nowMs: startMs + i * (1000 / 60) });
+      this.simNowMs += 1000 / 60;
+      stepCar(this.sim, p.input, { cfg: this.cfg, dt: 1 / 60, nowMs: this.simNowMs });
       this.integrate();
     }
     this.lastPatchAt = performance.now();
@@ -159,7 +162,9 @@ export class Predictor {
 
   /** one fixed prediction step with fresh input (also queued for the server) */
   step(input: DriveInput, nowMs: number): void {
-    stepCar(this.sim, input, { cfg: this.cfg, dt: 1 / 60, nowMs });
+    if (!Number.isFinite(this.simNowMs)) this.simNowMs = nowMs;
+    else this.simNowMs += 1000 / 60;
+    stepCar(this.sim, input, { cfg: this.cfg, dt: 1 / 60, nowMs: this.simNowMs });
     this.integrate();
   }
 

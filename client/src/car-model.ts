@@ -9,6 +9,7 @@
  */
 
 import * as THREE from "three";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 
 import { CAR_TARGET_CLEARANCE } from "@roadster-arena/shared";
 
@@ -24,7 +25,9 @@ export interface CarVisual {
   dispose(): void;
 }
 
-const BODY_COLOURS = [0xf2f1ee, 0x8fd6ff, 0xffd479, 0xb7f7a8, 0xff9f9f, 0xc9a7ff, 0x7ef0d4, 0xffb37e, 0xf7a8ff, 0x9ef1ff];
+// Keep the authored Roadster close to the reference: silver/white paint,
+// with variation limited to realistic neutral finishes.
+const BODY_COLOURS = [0xf2f1ee, 0xd7dbe0, 0xb7bec7, 0xe7e3dc, 0xc4cbd2];
 
 export function colourFor(name: string): number {
   let h = 0;
@@ -140,6 +143,9 @@ export function createCarVisual(colour: number): CarVisual {
   const car = new THREE.Group();
   car.position.y = -CAR_TARGET_CLEARANCE;
   root.add(car);
+  const effects = new THREE.Group();
+  car.add(effects);
+  let loadedModel: THREE.Object3D | null = null;
 
   const paint = new THREE.MeshStandardMaterial({ color: colour, roughness: 0.22, metalness: 0.62 });
   const glass = new THREE.MeshPhysicalMaterial({
@@ -214,38 +220,77 @@ export function createCarVisual(colour: number): CarVisual {
     car.add(m);
   }
 
-  // ---- thruster array: nozzles always visible, plumes scale with thrust ----
-  // Five nozzles across the tail (the reference's full-width array) plus two
-  // underbody lift jets; during hover/climb/boost the white "cold gas"
-  // plumes stretch and flicker.
-  const plumeMat = new THREE.MeshBasicMaterial({
-    color: 0xdff2ff,
+  // ---- thruster array: directional, restrained exhaust --------------------
+  // Cold-gas exhaust is mostly transparent. A small hot core and a soft,
+  // rapidly fading expansion are enough; bright particles make it look like
+  // fireworks instead of compressed air.
+  const coreMat = new THREE.MeshBasicMaterial({
+    color: 0xdaf4ff,
     transparent: true,
-    opacity: 0.55,
+    opacity: 0.42,
+    blending: THREE.NormalBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const exhaustMat = new THREE.MeshBasicMaterial({
+    color: 0xb9dff2,
+    transparent: true,
+    opacity: 0.16,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
-  const plumes: THREE.Mesh[] = [];
-  const addJet = (position: [number, number, number], dirY: number, radius: number, length: number) => {
-    const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 1.25, 0.06, 10), nozzleMat);
-    nozzle.position.set(position[0], position[1], position[2]);
-    car.add(nozzle);
-    const plume = new THREE.Mesh(new THREE.ConeGeometry(radius * 1.15, length, 10, 1, true), plumeMat);
-    // cone axis +y points tip-up; flip so the jet streams along -dirY·y
-    plume.rotation.z = dirY > 0 ? 0 : Math.PI;
-    plume.position.set(position[0], position[1] + dirY * (length / 2), position[2]);
-    plume.visible = false;
-    car.add(plume);
-    plumes.push(plume);
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: 0xe9f8ff,
+    transparent: true,
+    opacity: 0.12,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  type JetVisual = {
+    group: THREE.Group;
+    core: THREE.Mesh;
+    expansion: THREE.Mesh;
+    halo: THREE.Mesh;
+    length: number;
+    phase: number;
   };
-  // rear array (streams backward, −z): three of five
-  addJet([-0.72, 0.4, -2.46], -1, 0.09, 1.1);
-  addJet([0, 0.4, -2.5], -1, 0.12, 1.3);
-  addJet([0.72, 0.4, -2.46], -1, 0.09, 1.1);
-  // underbody lift jets (stream down, +y flip → downward along −y)
-  addJet([-0.6, 0.1, 0.55], -1, 0.11, 0.9);
-  addJet([0.6, 0.1, 0.55], -1, 0.11, 0.9);
+  const jets: JetVisual[] = [];
+  const axis = new THREE.Vector3(0, 1, 0);
+  const addJet = (
+    position: [number, number, number],
+    direction: [number, number, number],
+    radius: number,
+    length: number,
+    phase: number,
+  ) => {
+    const dir = new THREE.Vector3(...direction).normalize();
+    const group = new THREE.Group();
+    group.position.set(...position);
+    group.quaternion.setFromUnitVectors(axis, dir);
+    group.visible = false;
+    effects.add(group);
+
+    const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 1.25, 0.06, 12), nozzleMat);
+    group.add(nozzle);
+    const core = new THREE.Mesh(new THREE.ConeGeometry(radius * 0.42, length * 0.68, 16, 5, true), coreMat);
+    core.position.y = length * 0.36;
+    group.add(core);
+    const expansion = new THREE.Mesh(new THREE.ConeGeometry(radius * 1.75, length, 20, 8, true), exhaustMat);
+    expansion.position.y = length * 0.5;
+    group.add(expansion);
+    const halo = new THREE.Mesh(new THREE.ConeGeometry(radius * 2.6, length * 1.08, 20, 8, true), haloMat);
+    halo.position.y = length * 0.54;
+    group.add(halo);
+    jets.push({ group, core, expansion, halo, length, phase });
+  };
+  // rear array streams backward, while the lift jets stream down.
+  addJet([-0.72, 0.4, -2.46], [0, 0, -1], 0.09, 1.1, 0.2);
+  addJet([0, 0.4, -2.5], [0, 0, -1], 0.12, 1.3, 1.7);
+  addJet([0.72, 0.4, -2.46], [0, 0, -1], 0.09, 1.1, 3.1);
+  addJet([-0.6, 0.1, 0.55], [0, -1, 0], 0.11, 0.9, 4.4);
+  addJet([0.6, 0.1, 0.55], [0, -1, 0], 0.11, 0.9, 5.8);
 
   // ---- wheels ----
   const wheels: THREE.Object3D[] = [];
@@ -261,6 +306,38 @@ export function createCarVisual(colour: number): CarVisual {
     wheels.push(w);
   }
 
+  const loader = new GLTFLoader();
+  loader.load(
+    "/assets/reference/tesla_roadster_-_low_poly.glb",
+    (gltf) => {
+      const model = gltf.scene;
+      model.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!mesh.isMesh) return;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const material of materials) {
+          if (material?.name === "Material.001" && "color" in material) {
+            (material as THREE.MeshStandardMaterial).color.setHex(colour);
+            (material as THREE.MeshStandardMaterial).metalness = 0.62;
+            (material as THREE.MeshStandardMaterial).roughness = 0.22;
+          }
+        }
+      });
+      for (const child of [...car.children]) {
+        if (child !== effects) car.remove(child);
+      }
+      car.add(model);
+      loadedModel = model;
+      // Preserve the authored GLB wheels exactly as exported. Their meshes do
+      // not have safe independent pivots, so do not alter their transforms.
+      wheels.length = 0;
+    },
+    undefined,
+    (error) => console.error("Failed to load Roadster GLB; keeping procedural fallback.", error),
+  );
+
   const brakeMats = [lightbar];
 
   return {
@@ -271,15 +348,32 @@ export function createCarVisual(colour: number): CarVisual {
     },
     setBoost(v: number) {
       taillight.emissiveIntensity = 1.2 + v * 2.8;
+      loadedModel?.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const material of materials) {
+          if (!material || !("emissiveIntensity" in material)) continue;
+          (material as THREE.MeshStandardMaterial).emissiveIntensity = 0.6 + v * 2.4;
+        }
+      });
     },
     setThrust(v: number) {
       const level = Math.max(0, Math.min(1, v));
-      for (const p of plumes) {
-        const flicker = 0.75 + Math.random() * 0.5;
-        const k = level * flicker;
-        p.visible = level > 0.04;
-        p.scale.set(0.7 + k * 0.5, 0.35 + k, 0.7 + k * 0.5);
-        plumeMat.opacity = Math.min(0.85, 0.25 + k * 0.6);
+      const now = performance.now() * 0.008;
+      for (const jet of jets) {
+        const flicker = 0.82 + Math.sin(now * 1.9 + jet.phase) * 0.12 + Math.sin(now * 4.7 + jet.phase) * 0.06;
+        const k = level * Math.max(0.55, flicker);
+        jet.group.visible = level > 0.025;
+        jet.core.scale.set(0.8 + k * 0.3, 0.55 + k * 1.05, 0.8 + k * 0.3);
+        jet.expansion.scale.set(0.6 + k * 0.95, 0.35 + k * 1.15, 0.6 + k * 0.95);
+        jet.halo.scale.set(0.5 + k * 1.15, 0.3 + k * 1.05, 0.5 + k * 1.15);
+        jet.expansion.rotation.z = Math.sin(now * 1.35 + jet.phase) * 0.035;
+        jet.halo.rotation.x = Math.cos(now * 1.1 + jet.phase) * 0.045;
+        const coreMaterial = jet.core.material as THREE.MeshBasicMaterial;
+        const expansionMaterial = jet.expansion.material as THREE.MeshBasicMaterial;
+        coreMaterial.opacity = 0.22 + k * 0.3;
+        expansionMaterial.opacity = 0.05 + k * 0.18;
+        (jet.halo.material as THREE.MeshBasicMaterial).opacity = 0.035 + k * 0.13;
       }
     },
     dispose() {

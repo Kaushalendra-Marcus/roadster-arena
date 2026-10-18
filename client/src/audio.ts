@@ -8,6 +8,7 @@ export interface GameAudio {
   setEngine(speedRatio: number, boost: boolean, hover: boolean): void;
   bump(strength: number): void;
   gate(): void;
+  cheer(): void;
   suspend(): void;
   resume(): void;
   dispose(): void;
@@ -116,6 +117,37 @@ export function createAudio(): GameAudio {
       g.connect(master);
       o.start(t);
       o.stop(t + 0.36);
+    },
+    cheer() {
+      const t = ctx.currentTime;
+      const noise = ctx.createBufferSource();
+      noise.buffer = noiseBuf;
+      const band = ctx.createBiquadFilter();
+      band.type = "bandpass";
+      band.frequency.value = 1450;
+      band.Q.value = 0.7;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.22, t + 0.12);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 1.3);
+      noise.connect(band);
+      band.connect(g);
+      g.connect(master);
+      noise.start(t);
+      noise.stop(t + 1.35);
+      for (const [frequency, delay] of [[520, 0], [660, 0.08], [780, 0.16]] as const) {
+        const o = ctx.createOscillator();
+        const og = ctx.createGain();
+        o.type = "triangle";
+        o.frequency.setValueAtTime(frequency, t + delay);
+        og.gain.setValueAtTime(0.0001, t + delay);
+        og.gain.exponentialRampToValueAtTime(0.12, t + delay + 0.04);
+        og.gain.exponentialRampToValueAtTime(0.0001, t + delay + 0.65);
+        o.connect(og);
+        og.connect(master);
+        o.start(t + delay);
+        o.stop(t + delay + 0.7);
+      }
     },
     suspend() {
       void ctx.suspend();

@@ -163,6 +163,31 @@ body {
   margin-top: 0.4rem; overflow: hidden;
 }
 #speed-bar i { display: block; height: 100%; width: 0%; background: var(--ink); border-radius: 3px; transition: width 0.08s linear; }
+#hud-brake {
+  margin-top: 0.55rem; padding: 0.35rem 0.7rem; border: 1px solid var(--line);
+  border-radius: 6px; color: var(--muted); background: rgba(12,14,18,0.7);
+  font: inherit; font-size: 0.68rem; letter-spacing: 0.14em; cursor: pointer;
+  pointer-events: auto;
+}
+#hud-brake.down, #hud-brake:active { color: #111; background: var(--accent); border-color: var(--accent); }
+#hud-score {
+  position: absolute; top: 0.9rem; left: 50%; transform: translateX(-50%);
+  color: var(--muted); font-size: 0.72rem; letter-spacing: 0.16em;
+  text-shadow: 0 1px 5px rgba(0,0,0,0.8);
+}
+#hud-score b { color: var(--ink); font-size: 1rem; letter-spacing: 0.03em; margin-left: 0.25rem; }
+#driving-test {
+  position: absolute; top: 3.1rem; left: 50%; transform: translateX(-50%);
+  pointer-events: auto; border: 1px solid var(--accent); color: var(--accent);
+  background: rgba(12,14,18,0.78); border-radius: 6px; padding: 0.42rem 0.75rem;
+  font: inherit; font-size: 0.66rem; letter-spacing: 0.12em; cursor: pointer;
+}
+#driving-test:hover { background: var(--accent); color: #111; }
+#test-status {
+  position: absolute; top: 5.35rem; left: 50%; transform: translateX(-50%);
+  color: var(--ink); font-size: 0.75rem; letter-spacing: 0.08em;
+  text-shadow: 0 1px 5px #000;
+}
 
 #hud-gas { position: absolute; left: clamp(1rem, 3vw, 2.2rem); bottom: clamp(1rem, 3vw, 2.2rem); width: 74px; height: 74px; }
 #hud-gas svg { width: 100%; height: 100%; transform: rotate(-90deg); }

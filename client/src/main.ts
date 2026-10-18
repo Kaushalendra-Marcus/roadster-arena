@@ -49,6 +49,19 @@ let lastFrameMs = 0;
 let pingAt = 0;
 let deathRespawnAt = 0;
 let bannerTimer: ReturnType<typeof setTimeout> | undefined;
+let drivingTestUntil = 0;
+let drivingTestStartScore = 0;
+let drivingTestGates = 0;
+let drivingTestBest = 0;
+
+const drivingTestButton = document.getElementById("driving-test") as HTMLButtonElement;
+drivingTestButton.addEventListener("click", () => {
+  const score = net?.room?.state?.players.get(net.sessionId)?.score ?? 0;
+  drivingTestStartScore = score;
+  drivingTestGates = 0;
+  drivingTestUntil = performance.now() + 45_000;
+  hud.testStatus("DRIVING TEST · 45s · PASS THROUGH GATES", true);
+});
 
 // camera state (chase spring)
 let camYaw = 0;
@@ -73,8 +86,8 @@ function initHeroCar(): void {
 
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
-  camera.position.set(7.2, 3.1, 13.5);
-  camera.lookAt(0, 0.45, 0);
+  camera.position.set(6.4, 2.7, 10.8);
+  camera.lookAt(0, 0.58, 0);
   scene.add(new THREE.HemisphereLight(0xdce8ff, 0x111116, 2.2));
   const key = new THREE.DirectionalLight(0xffffff, 4.5);
   key.position.set(4, 7, 6);
@@ -84,7 +97,7 @@ function initHeroCar(): void {
   scene.add(rim);
 
   const car = createCarVisual(0xd9dde4);
-  car.root.scale.setScalar(0.7);
+  car.root.scale.setScalar(0.92);
   scene.add(car.root);
   const platform = new THREE.Mesh(
     new THREE.CylinderGeometry(2.9, 3.2, 0.08, 64),
@@ -212,6 +225,11 @@ async function startGame(): Promise<void> {
     onGateBoost: (gateIndex) => {
       audio?.gate();
       arena?.setGateBoost(gateIndex);
+      if (drivingTestUntil > performance.now()) drivingTestGates++;
+      if (gateIndex === 0) {
+        audio?.cheer();
+        hud.testStatus("STUNT LOOP COMPLETE · CROWD CHEER · +500", true);
+      }
     },
     onRejected: (reason, details) => hud.status(`Rejected: ${reason}${details ? ` — ${details}` : ""}`, "bad"),
   });
@@ -234,6 +252,8 @@ async function startGame(): Promise<void> {
 
 function teardown(): void {
   loopRunning = false;
+  drivingTestUntil = 0;
+  hud.testStatus("", false);
   net?.leave();
   for (const v of remoteVisuals.values()) v.dispose();
   remoteVisuals.clear();
@@ -266,6 +286,7 @@ function onStatePatch(state: ArenaState): void {
   if (me && predictor) {
     predictor.reconcile(ownSnapshot(me), performance.now());
     hud.gas(me.gas, me.mode === "hover" || me.mode === "grip");
+    hud.score(me.score);
     hud.mode(me.mode);
     // hard snap while the server says spawn protection is on = we respawned
     if (predictor.snapped && me.ghostUntil > 0) {
@@ -468,11 +489,24 @@ function frame(nowMs: number): void {
       meMode === "boost" ? "active" : sinceBoost < coolMs ? "cooldown" : "ready",
       cdFrac,
     );
+    if (me) hud.score(me.score);
   }
   if (nowMs - pingAt > 2000 && net) {
     pingAt = nowMs;
     net.ping();
     hud.ping(net.lastRttMs);
+  }
+  if (drivingTestUntil > 0) {
+    const remaining = Math.max(0, drivingTestUntil - nowMs);
+    const scoreNow = me?.score ?? drivingTestStartScore;
+    if (remaining <= 0) {
+      const result = Math.max(0, scoreNow - drivingTestStartScore);
+      drivingTestBest = Math.max(drivingTestBest, result);
+      hud.testStatus(`TEST COMPLETE · ${result.toLocaleString()} pts · BEST ${drivingTestBest.toLocaleString()}`, true);
+      drivingTestUntil = 0;
+    } else {
+      hud.testStatus(`DRIVING TEST · ${(remaining / 1000).toFixed(1)}s · ${drivingTestGates} GATES · +${Math.max(0, scoreNow - drivingTestStartScore).toLocaleString()}`, true);
+    }
   }
   if (tabHeld && net?.room?.state) {
     hud.scoreboard(net.room.state as ArenaState, net.sessionId);
@@ -505,17 +539,17 @@ function updateCamera(pos: Vec3Like, q: QuatLike, dtMs: number, drive: { steer: 
   const yaw = atan2lerp(camYaw, Math.atan2(sin, cos), Math.min(1, dtMs / 200));
   camYaw = yaw;
 
-  const dist = 6.2;
-  const height = 2.05;
+  const dist = 8.2;
+  const height = 3.05;
   const target = {
     x: pos.x - Math.sin(yaw) * dist,
     y: pos.y + height,
     z: pos.z - Math.cos(yaw) * dist,
   };
   const lookAt = {
-    x: pos.x + Math.sin(yaw) * 8,
-    y: pos.y + 0.62,
-    z: pos.z + Math.cos(yaw) * 8,
+    x: pos.x + Math.sin(yaw) * 10,
+    y: pos.y + 0.72,
+    z: pos.z + Math.cos(yaw) * 10,
   };
   const k = Math.min(1, dtMs / 85);
   cam.pos.x += (target.x - cam.pos.x) * k;
@@ -532,6 +566,8 @@ function updateCamera(pos: Vec3Like, q: QuatLike, dtMs: number, drive: { steer: 
 
   arena.camera.position.set(cam.pos.x, cam.pos.y, cam.pos.z);
   arena.camera.lookAt(cam.look.x, cam.look.y, cam.look.z);
+  // lookAt rebuilds the camera orientation each frame, so this applies a
+  // single local roll without accumulating it across frames.
   arena.camera.rotateZ(cam.tilt);
 
   if (predictor && audio) {

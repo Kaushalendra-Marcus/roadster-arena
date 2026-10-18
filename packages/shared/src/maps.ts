@@ -91,6 +91,30 @@ export function buildArenaDef(cfg: GameplayConfig): ArenaDef {
   ];
   for (const b of blockSpecs) colliders.push({ kind: "block", ...b });
 
+  // Deterministic city blocks. These are shared with the client renderer, so
+  // every visible building has an authoritative Rapier collider.
+  for (let x = -ARENA_HALF + 36; x <= ARENA_HALF - 36; x += 72) {
+    for (let z = -ARENA_HALF + 36; z <= ARENA_HALF - 36; z += 72) {
+      if (Math.abs(x) < 32 || Math.abs(z) < 32) continue;
+      const w = 18 + ((x * 13 + z * 7) % 8 + 8) % 8;
+      const d = 18 + ((x * 5 - z * 3) % 8 + 8) % 8;
+      const h = 8 + ((x * 3 + z * 11) % 22 + 22) % 22;
+      colliders.push({
+        kind: "block",
+        pos: { x, y: h / 2, z },
+        half: { x: w / 2, y: h / 2, z: d / 2 },
+      });
+    }
+  }
+
+  // Roadster showroom landmark: a dedicated collision volume matching the
+  // visible glass-front building in the client scene.
+  colliders.push({
+    kind: "block",
+    pos: { x: 210, y: 7, z: 35 },
+    half: { x: 15, y: 7, z: 9 },
+  });
+
   // --- ring gate boost impulse direction (stage direction of travel) ---------
   // three ring gates floating over the park (spec 8: "ring gates in the air")
   gates.push(
