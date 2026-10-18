@@ -10,7 +10,7 @@
     "turnRate": 2.6,
     "hoverTurnRate": 2.0,
     "airTurnRate": 1.6,
-    "airPitchTorque": 7.5,
+    "airPitchTorque": 6.0,
     "airRollTorque": 6.2,
     "airTorqueSnapRoll": 10.0,
     "gravity": 26.0,
@@ -22,6 +22,9 @@
     "airThrustAccel": 34.0,
     "gripAccel": 34.0,
     "maxTerrainPitchAlign": 40.0,
+    "slopeUnstickSlopeDeg": 24.0,
+    "slopeUnstickAccel": 9.0,
+    "slopeUnstickGraceSeconds": 0.25,
     "restitution": 0.02,
     "maxW": 20
   },

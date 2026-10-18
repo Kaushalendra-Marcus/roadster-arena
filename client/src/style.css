@@ -42,7 +42,7 @@ body {
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 1.1rem clamp(1rem, 4vw, 3rem); position: sticky; top: 0;
-  background: color-mix(in srgb, var(--bg) 86%, transparent);
+  background: color-mix(in srgb, #0f1b24 86%, transparent);
   backdrop-filter: blur(10px); z-index: 10; border-bottom: 1px solid var(--line);
 }
 .brand { font-weight: 800; letter-spacing: 0.18em; color: var(--ink); text-decoration: none; font-size: 1.05rem; }
@@ -51,32 +51,117 @@ body {
 .topbar nav a { color: var(--muted); text-decoration: none; font-size: 0.92rem; }
 .topbar nav a:hover { color: var(--ink); }
 
+/* hero — showroom study: studio gradient, GLB on a mirror floor, glass accents */
 .hero {
-  position: relative; min-height: 88vh; display: flex; flex-direction: column;
-  justify-content: center; padding: 5rem clamp(1rem, 6vw, 6rem); overflow: hidden;
-  background: linear-gradient(90deg, rgba(10,10,12,.98) 0%, rgba(10,10,12,.84) 44%, rgba(10,10,12,.58) 100%), url("/assets/reference/1-rr-perf-front-d-wide.avif") 78% 50% / cover no-repeat;
+  --sr-line: rgba(255, 255, 255, 0.10);
+  position: relative; min-height: 94vh; display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start; overflow: hidden;
+  padding: clamp(4.6rem, 11vh, 7rem) 1rem 0;
+  color: #eef5f8;
+  background:
+    radial-gradient(120% 90% at 50% -8%, rgba(146, 196, 216, 0.30), transparent 55%),
+    radial-gradient(130% 120% at 85% 110%, rgba(30, 66, 90, 0.55), transparent 62%),
+    linear-gradient(155deg, #254052 0%, #182c3a 45%, #0f1b24 100%);
 }
-.hero::after { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0.22;
-  background-image: linear-gradient(rgba(255,255,255,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.06) 1px, transparent 1px);
-  background-size: 72px 72px; mask-image: linear-gradient(90deg, transparent, #000 65%, transparent); }
+.hero::before { /* diagonal studio streaks */
+  content: ""; position: absolute; inset: -18%; pointer-events: none; z-index: 0;
+  background:
+    linear-gradient(112deg, transparent 40%, rgba(196, 228, 242, 0.07) 45%, transparent 52%),
+    linear-gradient(112deg, transparent 58%, rgba(196, 228, 242, 0.08) 63%, transparent 70%),
+    linear-gradient(100deg, transparent 16%, rgba(196, 228, 242, 0.05) 20%, transparent 27%);
+}
+#hero-car {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  cursor: grab; touch-action: pan-y; z-index: 1; /* pan-y: touch users can still scroll the page */
+}
+#hero-car:active { cursor: grabbing; }
+#hero-fallback {
+  position: absolute; left: 50%; top: 55%; transform: translate(-50%, -50%);
+  width: min(86vw, 940px); opacity: 0; pointer-events: none; transition: opacity 0.5s ease;
+  mix-blend-mode: screen; filter: saturate(0.85) contrast(1.05); z-index: 1;
+}
+#hero-fallback.show { opacity: 0.8; }
+
+.hero-copy {
+  position: relative; z-index: 2; display: flex; flex-direction: column;
+  align-items: center; gap: 0.95rem; text-align: center; pointer-events: none;
+}
 .hero-kicker, .eyebrow { color: var(--accent); font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase; font-weight: 700; }
-.hero-kicker { display: flex; align-items: center; gap: 0.6rem; margin-bottom: 1.7rem; position: relative; z-index: 2; }
+.hero-kicker { display: flex; align-items: center; gap: 0.6rem; }
 .hero-kicker span { width: 24px; height: 1px; background: var(--accent); }
-.hero h1 {
-  font-size: clamp(2.6rem, 7.5vw, 5.6rem); line-height: 1.02; margin: 0 0 1rem;
-  letter-spacing: -0.04em; max-width: 12ch; position: relative; z-index: 2;
+#model-cycle {
+  display: inline-flex; align-items: center; gap: 0.55rem; margin: 0;
+  background: none; border: 0; padding: 0; cursor: pointer; color: #fff;
+  font: inherit; font-size: clamp(2.5rem, 6vw, 4.8rem); font-weight: 500;
+  letter-spacing: -0.03em; line-height: 1.05; pointer-events: auto;
 }
-.hero h1 em { font-style: normal; color: var(--accent); }
-.tagline { color: var(--muted); font-size: 1.12rem; max-width: 40ch; margin: 0 0 1.8rem; position: relative; z-index: 2; }
-.hero-cta { display: flex; gap: 1rem; align-items: center; position: relative; z-index: 2; }
+#model-cycle em { font-style: normal; color: var(--accent); font-weight: 400; }
+#model-cycle .chev { width: 1.15rem; height: 1.15rem; opacity: 0.55; color: #dfeaf0; transition: transform 0.2s ease; }
+#model-cycle:hover .chev { transform: translateY(2px); }
+.hero-sub { color: rgba(233, 242, 247, 0.68); font-size: 1.08rem; margin: 0 0 0.6rem; max-width: 46ch; }
+.hero-cta { display: flex; gap: 1rem; align-items: center; pointer-events: auto; }
 .hero-cta .btn { font-size: 1.05rem; padding: 0.9rem 2rem; }
-.hero-meta { display: flex; gap: 1.4rem; margin-top: 3.8rem; color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.09em; position: relative; z-index: 2; }
-.hero-meta span { border-left: 1px solid var(--line); padding-left: 0.8rem; }
-.hero-meta b { display: block; color: var(--ink); font-size: 1.1rem; letter-spacing: 0; margin-bottom: 0.2rem; }
-.hero-showcase { position: absolute; width: min(62vw, 850px); height: min(100%, 820px); right: -3vw; top: 0; z-index: 1; }
-#hero-car { width: 100%; height: 100%; display: block; }
-.hero-orbit { position: absolute; width: 62%; height: 22%; left: 18%; bottom: 19%; border: 1px solid rgba(255,122,26,.35); border-radius: 50%; transform: rotate(-12deg); box-shadow: 0 0 30px rgba(255,122,26,.12); pointer-events: none; }
-.showcase-label { position: absolute; right: 4%; bottom: 18%; color: rgba(242,241,238,.6); font-size: 0.62rem; letter-spacing: .2em; transform: rotate(-90deg); transform-origin: right bottom; }
+
+/* turntable pill + drag affordance */
+.hero .turn-controls {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 13.5%;
+  display: flex; align-items: center; gap: 0.9rem; z-index: 2;
+}
+.turn-controls { display: flex; align-items: center; gap: 0.9rem; }
+.turn-controls button {
+  width: 2.5rem; height: 2.5rem; border-radius: 999px; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: rgba(12, 26, 36, 0.38); border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #dfeaf0; backdrop-filter: blur(10px); transition: background 0.15s ease, transform 0.12s ease;
+}
+.turn-controls button:hover { background: rgba(255, 255, 255, 0.12); }
+.turn-controls button:active { transform: scale(0.94); }
+.turn-controls svg { width: 0.95rem; height: 0.95rem; }
+.turn-pill {
+  padding: 0.62rem 1.45rem; border-radius: 999px; font-size: 0.85rem; letter-spacing: 0.06em;
+  color: #fff; background: radial-gradient(120% 160% at 50% 30%, rgba(224, 240, 248, 0.26), rgba(20, 40, 54, 0.5));
+  border: 1px solid rgba(255, 255, 255, 0.22); backdrop-filter: blur(10px); white-space: nowrap;
+}
+
+/* spec chips under the car */
+.hero-specs {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 3.4rem;
+  display: flex; gap: clamp(1.2rem, 3.2vw, 2.8rem); z-index: 2;
+}
+.hero-specs > div {
+  display: flex; flex-direction: column; gap: 0.22rem; text-align: left;
+  border-left: 1px solid rgba(255, 255, 255, 0.16); padding-left: clamp(0.85rem, 2vw, 1.5rem);
+}
+.hero-specs b { font-size: clamp(1rem, 1.6vw, 1.28rem); font-weight: 700; color: #fff; font-variant-numeric: tabular-nums; }
+.hero-specs span { font-size: 0.58rem; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(233, 242, 247, 0.52); }
+.hero .showcase-label {
+  position: absolute; left: clamp(1.2rem, 3vw, 2.6rem); bottom: 3.8rem;
+  font-size: 0.6rem; letter-spacing: 0.22em; color: rgba(238, 245, 248, 0.4); z-index: 2;
+}
+.hero-hint {
+  position: absolute; left: 50%; transform: translateX(-50%); bottom: 1.2rem;
+  font-size: 0.56rem; letter-spacing: 0.2em; text-transform: uppercase;
+  color: rgba(238, 245, 248, 0.3); z-index: 2;
+}
+
+/* the arena — what the game is */
+.game-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.2rem;
+}
+.game-grid article {
+  background: #101114; border: 1px solid var(--line); border-radius: 14px;
+  padding: 1.5rem 1.6rem; transition: background .2s ease, transform .2s ease;
+}
+.game-grid article:hover { background: #191a1f; transform: translateY(-3px); }
+.game-grid b { display: block; font-size: 1.15rem; margin-bottom: 0.5rem; }
+.game-grid b::after { content: ""; display: block; width: 22px; height: 2px; background: var(--accent); margin-top: 0.45rem; }
+.game-grid p { margin: 0; color: var(--muted); font-size: 0.95rem; line-height: 1.6; }
+.controls-strip {
+  margin-top: 1.6rem; padding: 1rem 1.4rem; border: 1px dashed var(--line); border-radius: 12px;
+  color: var(--muted); font-size: 0.85rem; line-height: 1.9;
+}
+.controls-strip b { color: var(--ink); font-weight: 600; }
+
 .facts { padding: clamp(3rem, 8vw, 7rem) clamp(1rem, 6vw, 6rem); border-top: 1px solid var(--line); }
 .facts h2, .reserve h2 { font-size: clamp(1.8rem, 4vw, 2.6rem); margin: 0 0 0.6rem; letter-spacing: -0.01em; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 3rem; margin-bottom: 2.8rem; }
@@ -115,6 +200,20 @@ body {
   border-top: 1px solid var(--line); padding: 2rem clamp(1rem, 6vw, 6rem);
   display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
   color: var(--muted); font-size: 0.85rem;
+}
+
+@media (max-width: 700px) {
+  .hero { min-height: 92vh; }
+  .hero-specs { gap: 0.9rem; }
+  .hero-specs > div { padding-left: 0.7rem; }
+  .hero .showcase-label, .hero-hint { display: none; }
+  .section-heading, .fact-layout, .reserve { display: block; }
+  .section-heading .lede { margin-top: 1.3rem; }
+  .fact-image { height: 240px; min-height: 0; margin-bottom: 1rem; }
+  .reserve-art { height: 220px; margin-bottom: 2rem; }
+  #hud-help { display: none; }
+  #speed-value { font-size: 2.4rem; }
+  #speed-bar { width: 130px; }
 }
 
 /* ---------- game shell ---------- */
@@ -292,14 +391,6 @@ body {
 .touch-col.far-right { right: calc(1.2rem + 84px); }
 
 @media (max-width: 700px) {
-  .hero { min-height: 820px; justify-content: flex-start; padding-top: 4rem; }
-  .hero-showcase { width: 130vw; height: 470px; right: -29vw; top: 35%; }
-  .hero-meta { margin-top: 2rem; gap: .7rem; flex-wrap: wrap; }
-  .hero-meta span { font-size: .6rem; }
-  .section-heading, .fact-layout, .reserve { display: block; }
-  .section-heading .lede { margin-top: 1.3rem; }
-  .fact-image { height: 240px; min-height: 0; margin-bottom: 1rem; }
-  .reserve-art { height: 220px; margin-bottom: 2rem; }
   #hud-help { display: none; }
   #speed-value { font-size: 2.4rem; }
   #speed-bar { width: 130px; }

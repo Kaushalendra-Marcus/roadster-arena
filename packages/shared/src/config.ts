@@ -28,6 +28,10 @@ export interface GameplayConfig {
     airThrustAccel: number;
     gripAccel: number;
     maxTerrainPitchAlign: number;
+    /** slope (deg) past which a nearly-stopped ground car gets an un-stick shove */
+    slopeUnstickSlopeDeg: number;
+    slopeUnstickAccel: number;
+    slopeUnstickGraceSeconds: number;
     restitution: number;
     maxW: number;
   };
@@ -92,7 +96,8 @@ export const DEFAULT_GAMEPLAY: GameplayConfig = {
     turnRate: 2.6,
     hoverTurnRate: 2.0,
     airTurnRate: 1.6,
-    airPitchTorque: 7.5,
+    /** max air-flip rotation rate (rad/s) from the decaying mouse `flip` analog */
+    airPitchTorque: 6.0,
     airRollTorque: 6.2,
     airTorqueSnapRoll: 10.0,
     gravity: 26.0,
@@ -104,6 +109,9 @@ export const DEFAULT_GAMEPLAY: GameplayConfig = {
     airThrustAccel: 34.0,
     gripAccel: 34.0,
     maxTerrainPitchAlign: 40.0,
+    slopeUnstickSlopeDeg: 24.0,
+    slopeUnstickAccel: 9.0,
+    slopeUnstickGraceSeconds: 0.25,
     restitution: 0.02,
     maxW: 20,
   },

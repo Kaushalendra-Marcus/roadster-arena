@@ -65,6 +65,8 @@ export const CarInput = schema(
     pitch: t.float32().default(0),
     roll: t.float32().default(0),
     yaw: t.float32().default(0),
+    /** analog air-flip torque from the mouse's vertical delta */
+    flip: t.float32().default(0),
     hover: t.boolean().default(false),
     boost: t.boolean().default(false),
     grip: t.boolean().default(false),

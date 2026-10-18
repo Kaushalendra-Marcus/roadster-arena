@@ -24,6 +24,7 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
   let respawnQueued = false;
   let emoteQueued = "";
   let mouseDx = 0; // accumulated steering from pointer when pointer-locked
+  let mouseDy = 0; // accumulated air-flip intent from pointer when locked
   let pointerLocked = false;
 
   // touch state
@@ -53,10 +54,13 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
 
   const onPointerLockChange = () => {
     pointerLocked = document.pointerLockElement === canvas;
-    if (!pointerLocked) mouseDx = 0;
+    if (!pointerLocked) { mouseDx = 0; mouseDy = 0; }
   };
   const onMouseMove = (e: MouseEvent) => {
-    if (pointerLocked) mouseDx += e.movementX;
+    if (pointerLocked) {
+      mouseDx += e.movementX;
+      mouseDy += e.movementY;
+    }
   };
 
   addEventListener("keydown", kd);
@@ -173,6 +177,15 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
       } else if (pointerLocked) {
         mouseDx = 0;
       }
+      // air-flip: mouse dy as a decaying analog (real flips stop the moment
+      // the mouse rests — no endless spin, unlike a held key's fixed torque)
+      let flip = 0;
+      if (pointerLocked && Math.abs(mouseDy) > 2) {
+        flip = Math.max(-1, Math.min(1, mouseDy / 220));
+        mouseDy *= 0.82;
+      } else if (pointerLocked) {
+        mouseDy = 0;
+      }
       const applyDead = (v: number) => (Math.abs(v) < DEAD ? 0 : v);
       steer = applyDead(steer);
       return {
@@ -182,6 +195,7 @@ export function createInput(canvas: HTMLCanvasElement): InputSource {
         pitch: touchActive ? touchThrottle : applyDead(axis(["arrowdown"], ["arrowup"])),
         roll: applyDead(axis(["q"], ["e"])),
         yaw: 0,
+        flip,
         hover: keys.has(" ") || touchModes.hover,
         boost: keys.has("shift") || touchModes.boost,
         grip: keys.has("g") || touchModes.grip,

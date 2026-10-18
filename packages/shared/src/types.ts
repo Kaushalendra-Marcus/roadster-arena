@@ -46,6 +46,12 @@ export interface CarSim {
   /** clock ms while the automatic barrel roll is playing */
   rollUntilMs: number;
   rollDir: number;
+  /** clock ms the slope un-stick timer was last armed (0 = not arming) */
+  desickAtMs?: number;
+  /** grip-through memory: ms clock until the crest probe gap reseats */
+  gripHoldUntilMs?: number;
+  /** remembered rail while the crest probe gap is open */
+  gripHoldRail?: { x: number; y: number; z: number };
   /** acknowledge cursor: seq of the last input the server consumed */
   lastProcessedInput: number;
 }
@@ -56,6 +62,8 @@ export interface DriveInput {
   pitch: number;
   roll: number;
   yaw: number;
+  /** −1..1 analog air-flip torque (mouse vertical); undefined on old inputs */
+  flip?: number;
   hover: boolean;
   boost: boolean;
   grip: boolean;

@@ -7,6 +7,7 @@
 import * as THREE from "three";
 import { buildArenaDef, ARENA_HALF, type GameplayConfig } from "@roadster-arena/shared";
 import type { PhysQuery } from "./physics-query.js";
+import { buildCity } from "./city.js";
 
 export interface ArenaView {
   scene: THREE.Scene;
@@ -196,80 +197,11 @@ export function createArenaView(canvas: HTMLCanvasElement, cfg: GameplayConfig, 
     }
   }
 
-  // Visual road dressing is deliberately separate from the collision loop.
+  // City dressing: streets, blocks, props and the two GLB building kits
+  // all derive from the shared CITY tables; the colliders above stay
+  // authoritative. See city.ts.
   {
-    const grass = new THREE.MeshStandardMaterial({ color: 0x3f6b52, roughness: 1 });
-    const road = new THREE.MeshStandardMaterial({ color: 0x30363b, roughness: 0.94 });
-    const lane = new THREE.MeshBasicMaterial({ color: 0xf0d58d, transparent: true, opacity: 0.72 });
-    const sidewalk = new THREE.MeshStandardMaterial({ color: 0x69727a, roughness: 0.88 });
-    const addBox = (geometry: THREE.BoxGeometry, material: THREE.Material, x: number, y: number, z: number) => {
-      const mesh = new THREE.Mesh(geometry, material);
-      mesh.position.set(x, y, z);
-      mesh.receiveShadow = true;
-      scene.add(mesh);
-    };
-    addBox(new THREE.BoxGeometry(ARENA_HALF * 2 - 24, 0.02, ARENA_HALF * 2 - 24), grass, 0, 0.015, 0);
-    for (const offset of [-144, 0, 144]) {
-      addBox(new THREE.BoxGeometry(18, 0.025, ARENA_HALF * 2 - 24), road, offset, 0.03, 0);
-      addBox(new THREE.BoxGeometry(ARENA_HALF * 2 - 24, 0.025, 18), road, 0, 0.035, offset);
-      for (let z = -ARENA_HALF + 18; z < ARENA_HALF - 18; z += 12) {
-        addBox(new THREE.BoxGeometry(0.28, 0.03, 5), lane, offset, 0.06, z);
-      }
-      for (let x = -ARENA_HALF + 18; x < ARENA_HALF - 18; x += 12) {
-        addBox(new THREE.BoxGeometry(5, 0.03, 0.28), lane, x, 0.06, offset);
-      }
-      addBox(new THREE.BoxGeometry(2, 0.04, ARENA_HALF * 2 - 24), sidewalk, offset - 11, 0.05, 0);
-      addBox(new THREE.BoxGeometry(2, 0.04, ARENA_HALF * 2 - 24), sidewalk, offset + 11, 0.05, 0);
-    }
-
-    // A real river corridor and pedestrian paths give the map a grounded
-    // neighbourhood structure instead of an empty square plaza.
-    const river = new THREE.Mesh(
-      new THREE.PlaneGeometry(42, ARENA_HALF * 2 - 24),
-      new THREE.MeshStandardMaterial({ color: 0x2c79a3, roughness: 0.18, metalness: 0.15 }),
-    );
-    river.rotation.x = -Math.PI / 2;
-    river.position.set(-210, 0.055, 0);
-    scene.add(river);
-    for (const x of [-234, -186]) {
-      addBox(new THREE.BoxGeometry(4, 0.08, ARENA_HALF * 2 - 24), sidewalk, x, 0.08, 0);
-    }
-    const path = new THREE.MeshBasicMaterial({ color: 0xc5b99b, transparent: true, opacity: 0.8 });
-    addBox(new THREE.BoxGeometry(5, 0.035, ARENA_HALF * 2 - 24), path, -250, 0.08, 0);
-    addBox(new THREE.BoxGeometry(5, 0.035, ARENA_HALF * 2 - 24), path, -170, 0.08, 0);
-
-    const trunk = new THREE.MeshStandardMaterial({ color: 0x4b3022, roughness: 1 });
-    const leaves = new THREE.MeshStandardMaterial({ color: 0x2f7c4c, roughness: 0.9 });
-    for (let z = -252; z <= 252; z += 36) {
-      for (const x of [-259, -161, -24, 24, 168, 264]) {
-        const t = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, 3.2, 8), trunk);
-        t.position.set(x, 1.6, z);
-        t.castShadow = true;
-        scene.add(t);
-        const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(2.6, 1), leaves);
-        crown.position.set(x, 4.4, z);
-        crown.scale.y = 1.25;
-        crown.castShadow = true;
-        scene.add(crown);
-      }
-    }
-
-    // Static traffic gives scale and makes the boulevard readable without
-    // introducing extra networked physics bodies.
-    const trafficBody = new THREE.MeshStandardMaterial({ color: 0xd8d9d5, roughness: 0.36, metalness: 0.45 });
-    const trafficGlass = new THREE.MeshStandardMaterial({ color: 0x17232c, roughness: 0.2, metalness: 0.4 });
-    for (const [x, z, rot] of [[-144, -70, 0], [-144, 74, Math.PI], [144, 42, Math.PI], [144, -98, 0]] as const) {
-      const vehicle = new THREE.Group();
-      const body = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 3.7), trafficBody);
-      body.position.y = 0.42;
-      vehicle.add(body);
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(1.25, 0.42, 1.55), trafficGlass);
-      roof.position.set(0, 0.82, -0.1);
-      vehicle.add(roof);
-      vehicle.position.set(x, 0, z);
-      vehicle.rotation.y = rot;
-      scene.add(vehicle);
-    }
+    buildCity(scene);
 
     const makeSign = (text: string, colour: string, x: number, y: number, z: number, scale: number) => {
       const canvas = document.createElement("canvas");

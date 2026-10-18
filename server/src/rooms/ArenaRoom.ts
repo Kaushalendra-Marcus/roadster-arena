@@ -72,6 +72,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
       pitch: [-1, 1],
       roll: [-1, 1],
       yaw: [-1, 1],
+      flip: [-1, 1],
     },
     // hold the last stick state through packet gaps; idle frames never bump
     // the acknowledge cursor, so prediction replay stays exact (spec 5.3)

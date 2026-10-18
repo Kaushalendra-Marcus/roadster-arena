@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { margin: 0; background: #10141a; color: #dde4ea; font: 12px/1.5 monospace; }
+      #log { position: fixed; top: 8px; left: 8px; z-index: 2; white-space: pre; background: rgba(0,0,0,.55); padding: 8px 10px; border-radius: 8px; }
+      #cv { position: fixed; inset: 0; }
+    </style>
+  </head>
+  <body>
+    <canvas id="cv"></canvas>
+    <div id="log">loading…</div>
+    <script type="module">
+      import * as THREE from "three";
+      import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+
+      const canvas = document.getElementById("cv");
+      const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+      renderer.setSize(innerWidth, innerHeight, false);
+      renderer.setPixelRatio(1);
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x141a22);
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x334155, 2.2));
+      const dir = new THREE.DirectionalLight(0xffffff, 2.0);
+      dir.position.set(40, 60, 30);
+      scene.add(dir);
+      const grid = new THREE.GridHelper(400, 40, 0x556677, 0x2a3542);
+      scene.add(grid);
+
+      const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.5, 5000);
+      const log = document.getElementById("log");
+      const loader = new GLTFLoader();
+      const rows = [];
+      let pending = 2;
+
+      const report = (label, obj, name) => {
+        const box = new THREE.Box3().setFromObject(obj);
+        const s = box.getSize(new THREE.Vector3());
+        const m = box.getCenter(new THREE.Vector3());
+        rows.push(`${label.padEnd(26)} ${name.padEnd(22)} size ${s.x.toFixed(1)} x ${s.y.toFixed(1)} x ${s.z.toFixed(1)}`);
+        return { box, s, m };
+      };
+
+      // --- new_york: lay every variant on the grid, uniform height 20
+      loader.load("/assets/reference/new_york_buildings.glb", (gltf) => {
+        const kitRoot = gltf.scene.getObjectByName("GLTF_SceneRootNode") ?? gltf.scene;
+        let x = -150;
+        kitRoot.children.forEach((child) => {
+          const info = report("[ny]", child, child.name);
+          const clone = child.clone(true);
+          clone.updateWorldMatrix(true, false);
+          const q = new THREE.Quaternion();
+          const sc = new THREE.Vector3();
+          child.matrixWorld.decompose(new THREE.Vector3(), q, sc);
+          clone.quaternion.copy(q);
+          clone.scale.copy(sc);
+          const b = new THREE.Box3().setFromObject(clone);
+          const size = b.getSize(new THREE.Vector3());
+          const k = 20 / size.y;
+          clone.scale.multiplyScalar(k);
+          const b2 = new THREE.Box3().setFromObject(clone);
+          const c = b2.getCenter(new THREE.Vector3());
+          clone.position.set(x - c.x, -b2.min.y, -c.z);
+          scene.add(clone);
+          x += Math.max(6, b2.getSize(new THREE.Vector3()).x + 4);
+        });
+        scene.add(new THREE.Mesh(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0x1c2530, roughness: 1 })));
+        pending--;
+        if (!pending) finish();
+      });
+
+      // --- modern_night alone on the right
+      loader.load("/assets/reference/modern_night_building_game-ready.glb", (gltf) => {
+        report("[mn]", gltf.scene, "modern_night");
+        const b = new THREE.Box3().setFromObject(gltf.scene);
+        const size = b.getSize(new THREE.Vector3());
+        const k = 30 / size.y;
+        gltf.scene.scale.setScalar(k);
+        const b2 = new THREE.Box3().setFromObject(gltf.scene);
+        const c = b2.getCenter(new THREE.Vector3());
+        gltf.scene.position.set(120 - c.x, -b2.min.y, -c.z);
+        scene.add(gltf.scene);
+        pending--;
+        if (!pending) finish();
+      });
+
+      function finish() {
+        log.textContent = rows.join("\n");
+        const span = 320;
+        camera.position.set(0, 60, 230);
+        camera.lookAt(0, 12, 0);
+        camera.fov = 40; camera.updateProjectionMatrix();
+        scene.background = new THREE.Color(0x10161d);
+        const axes = new THREE.AxesHelper(30); axes.position.set(0, 0, 0); scene.add(axes);
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        camera.position.set(20, 70, 250);
+        camera.lookAt(10, 10, 0);
+        renderer.render(scene, camera);
+      }
+      renderer.setAnimationLoop(() => renderer.render(scene, camera));
+    </script>
+  </body>
+</html>

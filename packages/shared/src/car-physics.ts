@@ -291,6 +291,10 @@ export function stepCar(
   const ahead = hoverWanted ? 0 : 2.1; // past the nose (half-length 2.05)
   const tall = hoverWanted ? 0 : 3.2;
   let surf = probeSurface(body, probeRange, ahead, tall);
+  // snapshot before the steep-fall filter below — the un-stick nudge runs on
+  // RAW probe data because wedged cars sit exactly on the steep band that
+  // the filter drops from standing support
+  const rawSurf = surf;
 
   const boostWindowMs = Math.round(ctx.cfg.boost.duration * 1000);
   const boosting = boostWindowMs > 0 && nowMs - sim.boostUsedAtMs < boostWindowMs;
@@ -303,13 +307,17 @@ export function stepCar(
   let mode: CarMode;
   if (boosting) {
     mode = "boost";
-  } else if (gripWanted && surf.hit && surf.distance <= GRIP_RANGE) {
+  } else if (
+    gripWanted &&
+    ((surf.hit && surf.distance <= GRIP_RANGE) || (sim.gripHoldUntilMs ?? 0) > nowMs)
+  ) {
     mode = "grip";
   } else if (hoverWanted) {
     mode = "hover";
   } else {
     mode = "ground";
   }
+  if (mode !== "grip") sim.gripHoldUntilMs = 0;
 
   // Terrain pitch limit for un-fanned rides: past maxTerrainPitchAlign the
   // only support is grip. A ground/boost car that still sees steep terrain
@@ -352,7 +360,12 @@ export function stepCar(
   // matter how high the car already is. Pitch takes the altitude over:
   // hold pitch up to climb (no height cap — the sky is the limit), pitch
   // down to sink; release and the servo glides back to the hover target.
+  // Gravity feed-forward: the servo's blend never converged to the
+  // commanded climb (a flying car plateaued at ~⅔ of hoverClimbSpeed
+  // because section 4c kept subtracting hover-gravity each tick), so the
+  // compensation is added here — commanded climb rates are now real.
   if (mode === "hover") {
+    const gHover = ph.gravity * ph.hoverGravityFactor;
     if (surf.hit) {
       const target = ph.hoverTargetHeight + CAR_TARGET_CLEARANCE;
       const err = target - surf.distance;
@@ -361,15 +374,23 @@ export function stepCar(
           ? pitch * (pitch > 0 ? ph.hoverClimbSpeed : ph.hoverSinkSpeed)
           : clamp(err * 1.2, -5, 9); // commanded climb speed, m/s
       const vN = dot(v, surf.normal);
-      const dv = (vDes - vN) * Math.min(1, 5 * dt);
+      const dv = (vDes - vN) * Math.min(1, 5 * dt) + gHover * dt;
       v.x += surf.normal.x * dv;
       v.y += surf.normal.y * dv;
       v.z += surf.normal.z * dv;
     } else {
-      // nothing below at all: pitch still flies, else settle gently
-      v.y += (pitch !== 0
-        ? pitch * (pitch > 0 ? ph.hoverClimbSpeed : ph.hoverSinkSpeed)
-        : 2) * dt;
+      // nothing below at all: the sky taxi. Pitch commands a climb RATE
+      // (a deadbeat velocity servo — a per-tick increment would integrate
+      // into an unbounded runaway once the altitude probe runs out of
+      // range); released pitch holds the current altitude and gently
+      // bleeds ballistic vertical off.
+      const vDes = pitch * (pitch > 0 ? ph.hoverClimbSpeed : ph.hoverSinkSpeed);
+      if (pitch !== 0) {
+        v.y += (vDes - v.y) * Math.min(1, 6 * dt);
+      } else {
+        v.y *= Math.exp(-0.35 * dt);
+      }
+      v.y += gHover * dt;
     }
   }
 
@@ -388,6 +409,71 @@ export function stepCar(
   v.x += gVec.x * dt;
   v.y += gVec.y * dt;
   v.z += gVec.z * dt;
+
+  // 4c-2. slope un-stick — a ground car can wedge across a concave slope
+  // fold (the curl's steep transition tucks the box's corners under the
+  // rising surface) where contact geometry braces the crawl even though
+  // gravity demands it (a 67° wedge with friction braces like a shoe in a
+  // V-groove). Uses the RAW probe: the steep-fall filter drops exactly the
+  // surfaces wedged cars rest on. After a short grace (real bumps stall
+  // too), a nearly-stopped ground car on a slope past slopeUnstickSlopeDeg
+  // gets a sustained downhill crawl plus an outward hop — cars can never
+  // rest mid-slope, only on flat-ish yard ground.
+  if (mode === "ground" && rawSurf.hit && ph.slopeUnstickAccel > 0) {
+    const speed = Math.hypot(v.x, v.y, v.z);
+    const slopeDeg = (Math.acos(clamp(rawSurf.normal.y, -1, 1)) * 180) / Math.PI;
+    const stuckOnSlope = speed < 2.0 && slopeDeg > ph.slopeUnstickSlopeDeg;
+    if (stuckOnSlope) {
+      const armed = sim.desickAtMs ?? 0;
+      if (armed === 0) {
+        sim.desickAtMs = nowMs;
+      } else {
+        const n = rawSurf.normal;
+        // downhill tangential = gravity minus its normal part, unit form
+        const gAlongN2 = -g * n.y;
+        const tanVec: Vec = {
+          x: 0 - n.x * gAlongN2,
+          y: -g - n.y * gAlongN2,
+          z: 0 - n.z * gAlongN2,
+        };
+        const tanMag = Math.hypot(tanVec.x, tanVec.y, tanVec.z) || 1;
+        const tanU = { x: tanVec.x / tanMag, y: tanVec.y / tanMag, z: tanVec.z / tanMag };
+        const stuckMs = nowMs - armed - ph.slopeUnstickGraceSeconds * 1000;
+        if (stuckMs <= 600) {
+          // phase 1: ramping hop + downhill crawl + rocking wobble. The
+          // V-groove only permits sliding along its extrusion axis, so
+          // velocity pushes alone get absorbed by the braced contacts —
+          // the rocking breaks that bracing geometrically.
+          const t = Math.min(1, Math.max(0, stuckMs / 300));
+          const lift = (ph.slopeUnstickAccel + t * ph.gravity * 2.4) * dt;
+          const a = ph.slopeUnstickAccel * dt;
+          v.x += tanU.x * a + n.x * lift;
+          v.y += tanU.y * a + n.y * lift;
+          v.z += tanU.z * a + n.z * lift;
+          q = quatMul(q, quatRotateAxis({ x: 0, y: 0, z: 1 }, Math.sin(stuckMs * 0.03) * 0.09));
+        } else {
+          // phase 2: notch-teleport downhill along the slope — the
+          // guaranteed resolver; reaches flat yard within a few notches
+          body.setTranslation(
+            {
+              x: p.x + tanU.x * 1.5 + n.x * 0.55,
+              y: p.y + tanU.y * 1.5 + n.y * 0.55,
+              z: p.z + tanU.z * 1.5 + n.z * 0.55,
+            },
+            true,
+          );
+          v.x = tanU.x * 3.0;
+          v.y = tanU.y * 3.0;
+          v.z = tanU.z * 3.0;
+          sim.desickAtMs = nowMs; // re-arm: the next cycle starts fresh
+        }
+      }
+    } else {
+      sim.desickAtMs = 0;
+    }
+  } else if (mode !== "ground") {
+    sim.desickAtMs = 0;
+  }
 
   // 4d. inward guard — on a surface, velocity toward the surface gets removed
   // (ground/boost/hover landings). Grip mode skips this — the fastener in
@@ -465,11 +551,12 @@ export function stepCar(
     // yaw around the car's up; while gripping that up points away from the swface
     q = quatMul(q, quatRotateAxis(u0, yawAngle));
   } else if (mode === "hover") {
-    // hovering: slower drift; throttle nudges forward
+    // hovering: slower drift; throttle nudges forward. Vertical is NOT
+    // decayed here — the altitude servo in 4b commands exact rates, and a
+    // straight exp decay bent every commanded climb into a ~45% plateau.
     if (throttle !== 0) newLong += throttle * ph.hoverLateralAccel * dt;
     newLat += steer * ph.hoverLateralAccel * dt;
     newLat *= Math.exp(-0.8 * dt);
-    newVert *= Math.exp(-2.2 * dt);
     const yawAngle = -ph.hoverTurnRate * steer * 0.7 * dt;
     q = quatMul(q, quatRotateAxis(u0, yawAngle));
   }
@@ -502,9 +589,12 @@ export function stepCar(
   if (airborne) {
     const upNow = rotateVec(q, { x: 0, y: 1, z: 0 });
     const rightNow = normVec(cross(upNow, fwd));
-    // Arrow Up/Down controls vertical thrust only. Continuous pitch torque
-    // made holding Arrow Up produce an unintended endless front flip.
-    const pitchRate = 0;
+    // Arrow Up/Down = vertical cold-gas thrust only (climb/dive). The
+    // endless-flip bug is fixed at the input source: air pitch comes from
+    // `flip`, a decaying mouse-delta analog that is zero the instant the
+    // mouse rests — proportional torque cannot accumulate like the old
+    // constant key torque did.
+    const pitchRate = Math.max(-1, Math.min(1, input.flip ?? 0)) * ph.airPitchTorque;
     let rollRate = 0;
     if (sim.rollUntilMs > nowMs) rollRate = sim.rollDir * ph.airTorqueSnapRoll;
     else if (rollRaw !== 0) rollRate = rollRaw * ph.airRollTorque;
@@ -627,35 +717,53 @@ export function stepCar(
   // velocity field instead of the collider hammering each facet lip.
   // Speed is preserved, only the direction snaps toward the rail; this also
   // kills lateral drift off the strip's side edge (v_z is railless).
-  if (mode === "grip" && surf.hit) {
-    const n = normVec(surf.normal);
-    // rail = forward projected onto the surface plane when the nose is
-    // mostly along the ride (ceiling/tunnel drives keep their true heading,
-    // ground steering keeps working); when the nose dives INTO the surface
-    // (loop wall entry) fall back to the arena's planar ascent direction.
-    const fN = dot(fwd, n);
-    const proj: Vec = { x: fwd.x - n.x * fN, y: fwd.y - n.y * fN, z: fwd.z - n.z * fN };
-    const projMag = Math.hypot(proj.x, proj.y, proj.z);
+  if (mode === "grip") {
     let rail: Vec;
-    if (projMag > 0.4) {
-      rail = { x: proj.x / projMag, y: proj.y / projMag, z: proj.z / projMag };
-    } else {
-      const crossRail: Vec = { x: -n.y, y: n.x, z: 0 };
-      rail = crossRail.x * fwd.x + crossRail.y * fwd.y + crossRail.z * fwd.z < 0
-        ? { x: -crossRail.x, y: -crossRail.y, z: 0 }
-        : crossRail;
-    }
-    // Curved surfaces (the ring's inside) extrude along ±z: any z velocity
-    // slides the car across the tube and dumps it off the strip's side, so
-    // their rails are planar. Flat venues (tunnel ceiling, plaza ground)
-    // agree with their look-ahead normal and keep full 3D rails — the
-    // tunnel's drive direction stays free.
-    if (surf.aheadNormal) {
-      const aN = normVec(surf.aheadNormal);
-      if (aN.x * n.x + aN.y * n.y + aN.z * n.z < 0.98) {
+    if (surf.hit) {
+      const n = normVec(surf.normal);
+      // rail = forward projected onto the surface plane when the nose is
+      // mostly along the ride (ceiling/tunnel drives keep their true heading,
+      // ground steering keeps working); when the nose dives INTO the surface
+      // (loop wall entry) fall back to the arena's planar ascent direction.
+      const fN = dot(fwd, n);
+      const proj: Vec = { x: fwd.x - n.x * fN, y: fwd.y - n.y * fN, z: fwd.z - n.z * fN };
+      const projMag = Math.hypot(proj.x, proj.y, proj.z);
+      if (projMag > 0.4) {
+        rail = { x: proj.x / projMag, y: proj.y / projMag, z: proj.z / projMag };
+      } else {
+        const crossRail: Vec = { x: -n.y, y: n.x, z: 0 };
+        rail = crossRail.x * fwd.x + crossRail.y * fwd.y + crossRail.z * fwd.z < 0
+          ? { x: -crossRail.x, y: -crossRail.y, z: 0 }
+          : crossRail;
+      }
+      // Across-the-strip (z) velocity only belongs on genuinely planar venues
+      // (plaza, the tunnel's floor/ceiling drives along the tunnel's long ±x).
+      // Walls, the curl's steep band and its overhanging crest are wall-like
+      // in world terms (|n.y| < 0.7): their rails are planar no matter what
+      // the look-ahead sees — at the crest it often misses entirely, and the
+      // old aheadNormal-only rule then let z drift re-grow and eject riders.
+      // A look-ahead disagreeing with the surface normal still marks
+      // curvature on tilted-but-horizontal surfaces.
+      const aN = surf.aheadNormal ? normVec(surf.aheadNormal) : null;
+      const tiltedLikeWall = Math.abs(n.y) < 0.7;
+      const curved = aN ? aN.x * n.x + aN.y * n.y + aN.z * n.z < 0.98 : false;
+      if (tiltedLikeWall || curved) {
         const mag = Math.hypot(rail.x, rail.y) || 1;
         rail = { x: rail.x / mag, y: rail.y / mag, z: 0 };
       }
+      // grip-through memory: remember the last fresh rail so the ride can be
+      // carried across the crest's probe gap (see the else branch below).
+      sim.gripHoldRail = rail;
+      sim.gripHoldUntilMs = nowMs + 260;
+    } else {
+      // At the curl's overhang the probe's "below" flips and finds nothing
+      // in range — dropping the ride instantly there cost every crest
+      // attempt. The remembered planar rail carries the car across the gap
+      // while it is airborne over the crest; the fresh probe re-latches on
+      // the far side (a 0.25 s window keeps this from masking real exits).
+      const held = sim.gripHoldRail ?? { x: fwd.x, y: Math.abs(fwd.y) + 0.15, z: fwd.z };
+      const mag = Math.hypot(held.x, held.y) || 1;
+      rail = { x: held.x / mag, y: held.y / mag, z: 0 };
     }
     const along = targetV.x * rail.x + targetV.y * rail.y + targetV.z * rail.z;
     const railSnap = Math.min(1, 20 * dt);

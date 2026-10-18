@@ -21,6 +21,7 @@ import { Predictor, type OwnCarSnapshot } from "./prediction.js";
 import { RemoteInterp } from "./remotes.js";
 import { createArenaView, type ArenaView } from "./arena.js";
 import { createCarVisual, colourFor, type CarVisual } from "./car-model.js";
+import { initShowroom } from "./landing.js";
 
 const CFG = DEFAULT_GAMEPLAY;
 
@@ -73,73 +74,14 @@ const cam = {
 
 // ============================== landing page ==============================
 
-function initHeroCar(): void {
-  const canvas = document.getElementById("hero-car") as HTMLCanvasElement | null;
-  const landing = document.getElementById("landing");
-  if (!canvas || !landing) return;
-
-  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
-
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 100);
-  camera.position.set(6.4, 2.7, 10.8);
-  camera.lookAt(0, 0.58, 0);
-  scene.add(new THREE.HemisphereLight(0xdce8ff, 0x111116, 2.2));
-  const key = new THREE.DirectionalLight(0xffffff, 4.5);
-  key.position.set(4, 7, 6);
-  scene.add(key);
-  const rim = new THREE.DirectionalLight(0xff6d2a, 5);
-  rim.position.set(-5, 1, -4);
-  scene.add(rim);
-
-  const car = createCarVisual(0xd9dde4);
-  car.root.scale.setScalar(0.92);
-  scene.add(car.root);
-  const platform = new THREE.Mesh(
-    new THREE.CylinderGeometry(2.9, 3.2, 0.08, 64),
-    new THREE.MeshStandardMaterial({ color: 0x25262b, metalness: 0.7, roughness: 0.3 }),
-  );
-  platform.position.y = -0.03;
-  scene.add(platform);
-
-  const resize = () => {
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
-    if (!width || !height) return;
-    renderer.setSize(width, height, false);
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-  };
-  addEventListener("resize", resize);
-  resize();
-  const startedAt = performance.now();
-  const render = () => {
-    const elapsed = (performance.now() - startedAt) / 1000;
-    if (!document.hidden && !landing.classList.contains("hidden")) {
-      car.root.rotation.y = 0.48 + Math.sin(elapsed * 0.32) * 0.14;
-      car.root.position.y = Math.sin(elapsed * 1.1) * 0.045;
-      platform.rotation.y = elapsed * 0.08;
-      renderer.render(scene, camera);
-    }
-    requestAnimationFrame(render);
-  };
-  render();
-}
-
 interface RoadsterContent {
   specs: { label: string; value: string }[];
   honesty: { note: string };
   reservations: { buttonLabel: string };
 }
 
-async function initLanding(): Promise<void> {
+async function initFacts(): Promise<void> {
   const facts = (await import("../../content/roadster.json")).default as RoadsterContent;
-
-  document.title = "Roadster Arena — drive it, then leave the ground";
 
   const grid = document.getElementById("fact-grid") as HTMLElement;
   const items: HTMLElement[] = [];
@@ -160,15 +102,20 @@ async function initLanding(): Promise<void> {
   const reserveUrl = env.VITE_RESERVE_URL ?? "";
   if (reserveUrl) {
     reserveBtn.href = reserveUrl;
-    reserveBtn.classList.remove("hidden");
     (document.getElementById("reserve-note") as HTMLElement).textContent = `Opens the official ${facts.reservations.buttonLabel} page in a new tab.`;
   } else {
     // spec 3.3: no valid owner link yet → the button stays but reservation
     // simply isn't wired astray
-    reserveBtn.classList.add("hidden");
+    reserveBtn.classList.add("is-disabled");
+    reserveBtn.removeAttribute("href");
   }
   (document.getElementById("foot-version") as HTMLElement).textContent = "revealed 2026";
+}
 
+function initLanding(): void {
+  document.title = "Roadster Arena — drive it, then leave the ground";
+
+  // hero CTA = the arena entry
   (document.getElementById("play-now") as HTMLButtonElement).addEventListener("click", () => {
     hud.showGame();
     hud.showJoinOverlay(true);
@@ -182,7 +129,15 @@ async function initLanding(): Promise<void> {
     e.preventDefault();
     void startGame();
   });
-  initHeroCar();
+
+  try {
+    initShowroom();
+  } catch (err) {
+    console.error("showroom init failed", err);
+  }
+  void initFacts().catch((err) => {
+    console.error("facts init failed", err);
+  });
 }
 
 // ============================== game bootstrap ============================
@@ -602,6 +557,4 @@ addEventListener("keyup", (e) => {
 
 // ============================== boot ======================================
 
-void initLanding().catch((err) => {
-  console.error("landing init failed", err);
-});
+initLanding();

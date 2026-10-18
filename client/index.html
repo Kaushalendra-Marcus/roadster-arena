@@ -8,37 +8,79 @@
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
-    <!-- ==================== LANDING PAGE ==================== -->
+    <!-- ==================== LANDING ==================== -->
     <main id="landing">
       <header class="topbar">
         <a class="brand" href="#top">ROADSTER<span>ARENA</span></a>
         <nav>
-          <a href="#game">Play</a>
+          <a href="#top">Play</a>
+          <a href="#arena">The Game</a>
           <a href="#facts">The Car</a>
           <a href="#reserve">Reserve</a>
         </nav>
       </header>
 
       <section class="hero" id="top">
-        <div class="hero-kicker"><span></span> Multiplayer flight arena / 01</div>
-        <h1>Drive it.<br /><em>Then leave the ground.</em></h1>
-        <p class="tagline">
-          A multiplayer arena of flying electric hypercars. Twenty drivers, one
-          map, no lap times — just altitude, gates and nerve.
-        </p>
-        <div class="hero-cta">
-          <button id="play-now" class="btn primary">Enter the Arena</button>
-          <a class="btn ghost" href="#facts">Meet the car</a>
+        <canvas id="hero-car" aria-label="Roadster Arena 3D car preview"></canvas>
+        <img id="hero-fallback" src="/assets/reference/3-rr-perf-side-d-wide.avif" alt="Roadster side profile" />
+        <div class="hero-copy">
+          <div class="hero-kicker"><span></span> GEN 2 · MULTIPLAYER FLIGHT ARENA</div>
+          <h1 id="model-cycle"><span id="model-name">Tesla Roadster <em>2026</em></span>
+            <svg class="chev" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6 8 10.4 12.5 6"/></svg>
+          </h1>
+          <p class="hero-sub">Drive it, boost it, leave the ground.</p>
+          <div class="hero-cta">
+            <button id="play-now" class="btn primary">Enter the Arena</button>
+            <a class="btn ghost" href="#facts">Meet the car</a>
+          </div>
         </div>
-        <div class="hero-meta">
-          <span><b>20</b> drivers per arena</span>
-          <span><b>60</b> Hz physics</span>
-          <span><b>∞</b> ways to fly</span>
+        <div class="turn-controls">
+          <button id="spin-left" type="button" aria-label="Rotate left">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.8 3.4 5.2 8l4.6 4.6"/></svg>
+          </button>
+          <span class="turn-pill">360° · drag</span>
+          <button id="spin-right" type="button" aria-label="Rotate right">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6.2 3.4 10.8 8l-4.6 4.6"/></svg>
+          </button>
         </div>
-        <div class="hero-showcase" aria-label="Roadster Arena 3D car preview">
-          <canvas id="hero-car"></canvas>
-          <div class="hero-orbit"></div>
-          <span class="showcase-label">R-01 / SKYLINE SPEC</span>
+        <div class="hero-specs">
+          <div><b>1.9 s</b><span>0-60 mph</span></div>
+          <div><b>250+ mph</b><span>top speed</span></div>
+          <div><b>200 kWh</b><span>battery</span></div>
+          <div><b>20</b><span>drivers per arena</span></div>
+        </div>
+        <span class="showcase-label">R-01 / SHOWROOM SPEC</span>
+        <div class="hero-hint">scroll to zoom · drag to spin</div>
+      </section>
+
+      <section class="arena-info" id="arena">
+        <div class="section-heading">
+          <div>
+            <div class="eyebrow">The arena</div>
+            <h2>Fly the car, own the sky.</h2>
+          </div>
+          <p class="lede">Up to 20 drivers per arena on server-authoritative 60&nbsp;Hz physics. One shared map, four ways to drive it: floor, wall, ceiling or air.</p>
+        </div>
+        <div class="game-grid">
+          <article>
+            <b>Hover</b>
+            <p>Take altitude on command. The sky-taxi servo holds your climb dead-steady and bleeds it gently when you let go — park on a rooftop if you want.</p>
+          </article>
+          <article>
+            <b>Grip</b>
+            <p>A magnetic-fan pin that drives loops, wall bands and ceiling runs. The ride carries its momentum through the curl's steep band instead of sliding off.</p>
+          </article>
+          <article>
+            <b>Boost &amp; flips</b>
+            <p>Shift for a cooldown-gated burst, and flick the mouse in the air for front/back flips. Boost is the only way over the tall crest.</p>
+          </article>
+          <article>
+            <b>Score &amp; stunts</b>
+            <p>Speed, gates and stunt scoring on a live scoreboard — reconnectable for a few seconds if your tab blinks.</p>
+          </article>
+        </div>
+        <div class="controls-strip">
+          <span><b>W</b> throttle · <b>S</b> brake · <b>A/D</b> steer · <b>Shift</b> boost · <b>Space</b> hover · <b>G</b> grip · <b>R</b> respawn · <b>↑/↓</b> climb/dive · <b>Q/E</b> roll · mouse steer + flip · <b>Tab</b> scoreboard</span>
         </div>
       </section>
 
@@ -121,7 +163,7 @@
         <div id="hud-help" title="Controls">
           <b>W</b> throttle · <b>S / BRAKE</b> slow down · <b>A/D</b> steer · <b>Shift</b> boost ·
           <b>Space</b> hover · <b>G</b> grip · <b>R</b> respawn ·
-          <b>↑/↓</b> climb/dive · <b>Q/E</b> side roll · mouse steer (in air) · <b>1–8</b> emotes ·
+          <b>↑/↓</b> climb/dive · <b>Q/E</b> side roll · mouse steer + flip (in air) · <b>1–8</b> emotes ·
           <b>Tab</b> scoreboard
         </div>
         <div id="scoreboard" class="hidden"><table><thead><tr><th>#</th><th>Driver</th><th>Score</th><th>Mode</th><th>km/h</th></tr></thead><tbody id="score-rows"></tbody></table></div>

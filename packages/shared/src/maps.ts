@@ -52,6 +52,121 @@ export interface ArenaDef {
   spawnQuat: { x: number; y: number; z: number; w: number }[];
 }
 
+// ============================== city layout ================================
+// Single source of truth for the whole city: the server turns THEME_BUILDINGS
+// into Rapier colliders, the client renders streets, props and building kits
+// from these same tables. All values are metres, deterministic, no randomness.
+
+/** street centrelines on both axes (ring + two avenues + centre road) */
+export const CITY_STREET_LINES = [-260, -144, 0, 144, 260] as const;
+/** half width of every street (18 m carriageway) */
+export const CITY_STREET_HALF = 9;
+
+export type CityTheme =
+  | "towers"
+  | "offices"
+  | "civic"
+  | "hospital"
+  | "shops"
+  | "homes"
+  | "industry"
+  | "solar"
+  | "park"
+  | "curlPark"
+  | "showroom";
+
+export interface CityCell {
+  x: number;
+  z: number;
+  /** half extent of the block (edge-to-edge of the street sidewalks) */
+  half: number;
+  theme: CityTheme;
+}
+
+export interface CityBuilding {
+  dx: number;
+  dz: number;
+  /** half extents + height (y is in the builder) */
+  hw: number;
+  hd: number;
+  h: number;
+}
+
+/** inner cells sit between the centre road and the avenues (band 126 wide),
+ *  outer cells between the avenues and the ring road (band 98 wide) */
+export const CITY_CELLS: CityCell[] = [
+  // north row (z = -202 / -72)
+  { x: -202, z: -202, half: 49, theme: "solar" },
+  { x: -72, z: -202, half: 49, theme: "park" },
+  { x: 72, z: -202, half: 49, theme: "civic" },
+  { x: 202, z: -202, half: 49, theme: "hospital" },
+  { x: -202, z: -72, half: 49, theme: "shops" },
+  { x: -72, z: -72, half: 63, theme: "towers" },
+  { x: 72, z: -72, half: 63, theme: "offices" },
+  { x: 202, z: -72, half: 49, theme: "industry" },
+  // south row (z = 72 / 202)
+  { x: -202, z: 72, half: 49, theme: "towers" },
+  { x: -72, z: 72, half: 63, theme: "homes" },
+  { x: 72, z: 72, half: 63, theme: "curlPark" },
+  { x: 202, z: 72, half: 49, theme: "showroom" },
+  { x: -202, z: 202, half: 49, theme: "industry" },
+  { x: -72, z: 202, half: 49, theme: "homes" },
+  { x: 72, z: 202, half: 49, theme: "shops" },
+  { x: 202, z: 202, half: 49, theme: "homes" },
+];
+
+/** building footprints per theme (offsets relative to the cell centre) */
+export const THEME_BUILDINGS: Record<CityTheme, CityBuilding[]> = {
+  // kit-covered cells: footprints are sized to the source models' aspect
+  // ratios (matches KIT_SLOTS in client/src/city.ts) so the uniform fit
+  // lands around 1:1 and the collider perfectly wraps the visible shell.
+  towers: [
+    { dx: -30, dz: 0, hw: 4, hd: 4, h: 48 }, // Empire State
+    { dx: 24, dz: -26, hw: 3.8, hd: 3.8, h: 42 }, // Woolworth
+    { dx: 26, dz: 27, hw: 3.45, hd: 3.45, h: 46 }, // Chrysler
+  ],
+  offices: [
+    { dx: -24, dz: -24, hw: 3.05, hd: 3.05, h: 40 }, // g2 glass tower
+    { dx: 22, dz: 0, hw: 5.53, hd: 3.7, h: 32 }, // g5 glass slab
+    { dx: -22, dz: 26, hw: 3.15, hd: 3.15, h: 34 }, // g6 glass tower
+  ],
+  civic: [
+    { dx: -20, dz: -20, hw: 4, hd: 8.45, h: 14 }, // Flatiron (police HQ)
+    { dx: 26, dz: 24, hw: 1.95, hd: 3.4, h: 11 }, // precinct annex
+  ],
+  hospital: [
+    { dx: -8, dz: -6, hw: 6.05, hd: 6.05, h: 26 }, // modern night tower
+    { dx: 22, dz: 14, hw: 10, hd: 7, h: 11 },
+  ],
+  shops: [
+    { dx: -32, dz: -30, hw: 2.2, hd: 2.2, h: 13 }, // brownstone
+    { dx: 30, dz: -32, hw: 3.3, hd: 5.5, h: 11 },
+    { dx: 33, dz: 30, hw: 1.95, hd: 3.9, h: 14 },
+    { dx: -30, dz: 32, hw: 2.7, hd: 3.7, h: 11 },
+  ],
+  homes: [
+    { dx: -30, dz: -28, hw: 4.5, hd: 3.5, h: 6.5 },
+    { dx: -16, dz: -31, hw: 4.5, hd: 3.5, h: 6 },
+    { dx: -32, dz: -8, hw: 4.5, hd: 3.5, h: 7 },
+    { dx: 6, dz: -20, hw: 5, hd: 4, h: 7.5 },
+    { dx: -14, dz: 6, hw: 4.5, hd: 3.5, h: 6 },
+    { dx: 16, dz: -4, hw: 5, hd: 4, h: 6.5 },
+    { dx: 28, dz: -24, hw: 4.5, hd: 3.5, h: 6 },
+    { dx: 30, dz: 12, hw: 4.5, hd: 3.5, h: 6.5 },
+  ],
+  industry: [
+    { dx: -20, dz: -18, hw: 17, hd: 12, h: 13 },
+    { dx: 16, dz: 16, hw: 14, hd: 10, h: 10 },
+    { dx: -34, dz: 14, hw: 3.5, hd: 2.2, h: 1.3 },
+    { dx: 26, dz: 2, hw: 3.5, hd: 2.2, h: 1.3 },
+    { dx: 32, dz: -12, hw: 3.5, hd: 2.2, h: 1.3 },
+  ],
+  showroom: [{ dx: -30, dz: 34, hw: 6, hd: 5, h: 7 }],
+  solar: [],
+  park: [],
+  curlPark: [],
+};
+
 const TAU = Math.PI * 2;
 
 /** Build the full arena primitive list. Deterministic. */
@@ -91,21 +206,26 @@ export function buildArenaDef(cfg: GameplayConfig): ArenaDef {
   ];
   for (const b of blockSpecs) colliders.push({ kind: "block", ...b });
 
-  // Deterministic city blocks. These are shared with the client renderer, so
-  // every visible building has an authoritative Rapier collider.
-  for (let x = -ARENA_HALF + 36; x <= ARENA_HALF - 36; x += 72) {
-    for (let z = -ARENA_HALF + 36; z <= ARENA_HALF - 36; z += 72) {
-      if (Math.abs(x) < 32 || Math.abs(z) < 32) continue;
-      const w = 18 + ((x * 13 + z * 7) % 8 + 8) % 8;
-      const d = 18 + ((x * 5 - z * 3) % 8 + 8) % 8;
-      const h = 8 + ((x * 3 + z * 11) % 22 + 22) % 22;
+  // --- authored city grid: 16 thematic cells around the central roundabout --
+  // Every themed building below gets an authoritative Rapier collider; the
+  // client renders the same table (plus streets, trees and props) from the
+  // exported constants above, so physics and visuals can never drift apart.
+  for (const cell of CITY_CELLS) {
+    for (const b of THEME_BUILDINGS[cell.theme]) {
       colliders.push({
         kind: "block",
-        pos: { x, y: h / 2, z },
-        half: { x: w / 2, y: h / 2, z: d / 2 },
+        pos: { x: cell.x + b.dx, y: b.h / 2, z: cell.z + b.dz },
+        half: { x: b.hw, y: b.h / 2, z: b.hd },
       });
     }
   }
+
+  // roundabout fountain island on the spawn plaza
+  colliders.push({
+    kind: "block",
+    pos: { x: 0, y: 1.3, z: 0 },
+    half: { x: 5, y: 1.3, z: 5 },
+  });
 
   // Roadster showroom landmark: a dedicated collision volume matching the
   // visible glass-front building in the client scene.
