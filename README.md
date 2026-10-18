@@ -63,7 +63,7 @@ packages/shared   types, schema, map, gas/boost constants, THE car controller
 server            Colyseus rooms, Rapier sim, matchmaking (authoritative)
 client            vite + three.js game, prediction, HUD, landing page
 config            gameplay.json + rooms.json (all server tunables live here)
-content           roadster.json — landing page facts + reserve link
+content           roadster.json — landing facts, reveal figures, sources
 tests             vitest suites (room rules, physics, smoke)
 ```
 
@@ -73,6 +73,15 @@ Every gameplay tunable is in **config/gameplay.json** (car speeds, gas,
 boost, arena radius, gates, respawn) and **config/rooms.json** (capacity,
 rate limits, reconnect hold, tick rates). The shared physics module reads
 these — no magic numbers in gameplay code.
+
+### The landing page
+
+`content/roadster.json` is the single source for every figure on the landing
+page: hero stats, the spec sheet, trims, timeline, reveal quote and source
+links. The page renders itself from that file at runtime, so changing a claim
+never means editing markup. Two live three.js stages (`client/src/landing.ts`)
+use the showroom roadster GLB: the hero turntable and the car inspector,
+whose spec hotspots are pinned to fractions of the model's bounding box.
 
 ## How the netcode works
 

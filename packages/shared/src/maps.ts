@@ -278,8 +278,6 @@ export function buildArenaDef(cfg: GameplayConfig): ArenaDef {
     const p5 = { x: 73, y: 41 };
     const p6 = { x: 61, y: 34 };
     const stations: { x: number; y: number }[] = [];
-    const point = (a: { x: number; y: number }, b: { x: number; y: number }, t: number) =>
-      ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
     const cubic = (a: typeof p0, b: typeof p0, c: typeof p0, d: typeof p0, t: number) => {
       const u = 1 - t;
       return {

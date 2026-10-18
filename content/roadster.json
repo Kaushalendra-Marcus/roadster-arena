@@ -1,24 +1,60 @@
 {
-  "$comment": "Roadster facts for the landing page (spec 10.2). Every figure is as reported by news coverage of the 15 October 2026 reveal — claims by Tesla, not independently tested. Re-verify against Tesla's official Roadster page before launch and bump lastChecked.",
-  "lastChecked": "2026-10-17",
-  "sources": {
-    "reveal": "https://www.tesla.com/roadster",
-    "note": "Store per-figure source links in sources array of each entry; re-verify at launch."
-  },
+  "$comment": "Roadster facts for the landing page (spec 10.2). Figures are Tesla's own claims from the 15 October 2026 reveal at SpaceX's McGregor test facility — not independently tested. Re-verify against Tesla's official Roadster page before launch and bump lastChecked.",
+  "lastChecked": "2026-10-19",
+  "sources": [
+    { "label": "Tesla — Roadster (official spec page)", "url": "https://www.tesla.com/roadster" },
+    { "label": "SpaceX — McGregor test facility (reveal venue)", "url": "https://www.spacex.com/" }
+  ],
   "reveal": {
     "displayDate": "15 October 2026",
     "isoDate": "2026-10-15",
-    "location": "SpaceX test facility, McGregor, Texas",
-    "delayNote": "Delayed from 1 October because of rain",
-    "summary": "Second-generation Roadster revealed 15 October 2026 at SpaceX's McGregor test facility, after a one-day delay for rain. The car drove up a ramp, stuck to it upside down with its fan suction system, and flipped through the air using cold-gas thrusters. Roadster Arena recreates exactly that party trick, in browser multiplayer."
+    "location": "SpaceX McGregor test facility, Texas",
+    "delayNote": "Postponed from 1 October because of rain",
+    "summary": "The second-generation Roadster was revealed at SpaceX's McGregor test facility. The car drove up an inverted ramp, held itself upside down on its fan suction system, hovered low over other cars and flipped in the air on cold-gas thrusters. Roadster Arena recreates the party trick: hover, grip and thrust — in browser multiplayer.",
+    "quote": {
+      "text": "The best of the last of the human-driven cars.",
+      "attribution": "Elon Musk, at the 15 October reveal"
+    },
+    "footage": {
+      "src": "/assets/reference/6FEzIMxyuqK83BUt.mp4",
+      "label": "FAN FOOTAGE · MCGREGOR · 15.10.2026"
+    }
   },
+  "heroStats": [
+    { "id": "accel60", "label": "0–60 mph · thrusters" },
+    { "id": "topSpeed", "label": "top speed" },
+    { "id": "cornering", "label": "fan-suction cornering" },
+    { "value": "20", "label": "drivers per arena" }
+  ],
   "specs": [
-    { "id": "accel60",  "label": "0 to 60 mph", "value": "0.81 s", "note": "Timed at the event; under 1 s claimed. Under 0.59 s claimed for the Rocket version.", "claimed": true },
-    { "id": "topSpeed", "label": "Top speed", "value": "230+ mph", "note": "As claimed at the reveal.", "claimed": true },
-    { "id": "range",    "label": "Range", "value": "300+ miles", "note": "Lower than the 620 miles promised in 2017.", "claimed": true },
-    { "id": "seats",    "label": "Seats", "value": "2", "note": "Rocket trim reported as single-seat.", "claimed": true },
-    { "id": "cornering","label": "Cornering", "value": "2 g+", "note": "Claimed with the fan suction system.", "claimed": true },
-    { "id": "price",    "label": "Final price", "value": "Not announced", "note": "Only reservation deposits are open.", "claimed": true }
+    { "id": "accel60", "label": "0 to 60 mph", "value": "0.81 s", "note": "Thrust trim, timed at the reveal; under 1 s claimed for base and under 0.59 s for Rocket.", "claimed": true },
+    { "id": "topSpeed", "label": "Top speed", "value": "230+ mph", "note": "As claimed at the reveal; engineers quoted 214 mph initial and a 330 mph version planned.", "claimed": true },
+    { "id": "range", "label": "Range", "value": "300+ miles", "note": "Engineers at the event quoted 310–320 miles; the 2017 promise was 620.", "claimed": true },
+    { "id": "power", "label": "Power", "value": "1,341 hp+", "note": "Over 1,000 kW from the 800–1,000 V pack; charging above 500 kW.", "claimed": true },
+    { "id": "cornering", "label": "Cornering", "value": "2 g+", "note": "Claimed with the multi-mode fan suction system.", "claimed": true },
+    { "id": "weight", "label": "Weight target", "value": "under 1,700 kg", "note": "Magnesium, titanium and carbon fibre construction.", "claimed": true },
+    { "id": "wheelbase", "label": "Wheelbase", "value": "2,825 mm", "note": "Two seats moulded into the chassis; yoke steering, steer-by-wire, butterfly doors.", "claimed": true },
+    { "id": "thrust", "label": "Thrust system", "value": "200 L N₂", "note": "Cold-gas COPV at ~10,000 psi; about five seconds of thrust per fill, refills in 2–6 hours.", "claimed": true },
+    { "id": "production", "label": "Production target", "value": "2028", "note": "Gigafactory Texas. Tesla has missed every previous Roadster date.", "claimed": true }
+  ],
+  "garage": {
+    "$comment": "hotspot anchors are fractions (0–1) of the car model's bounding box, resolved in client/src/landing.ts",
+    "hotspots": [
+      { "id": "nose", "label": "Aero nose", "value": "Hidden lights, full undertray", "anchor": { "x": 0.5, "y": 0.26, "z": 0.04 } },
+      { "id": "canopy", "label": "Gold-tinted canopy", "value": "Apollo-visor glass, targa panels", "tagY": -34, "anchor": { "x": 0.5, "y": 0.92, "z": 0.27 } },
+      { "id": "suction", "label": "Multi-mode fan suction", "value": "Holds 2 g+ — and wall runs", "anchor": { "x": 0.5, "y": 0.05, "z": 0.5 } },
+      { "id": "pack", "label": "800–1,000 V pack", "value": "Over 1,000 kW", "tagY": 16, "anchor": { "x": 0.5, "y": 0.64, "z": 0.7 } },
+      { "id": "thrusters", "label": "Cold-gas thruster array", "value": "Rear nozzles, built with SpaceX", "anchor": { "x": 0.5, "y": 0.22, "z": 0.97 } }
+    ]
+  },
+  "ticker": [
+    "0–60 IN 0.81 S — TIMED AT THE REVEAL",
+    "COLD-GAS THRUSTERS, DEVELOPED WITH SPACEX",
+    "FAN SUCTION: 2 G+ CORNERING",
+    "1,341 HP FROM AN 800–1,000 V PACK",
+    "REVEALED AT SPACEX MCGREGOR · 15 OCT 2026",
+    "PRODUCTION TARGET 2028 · GIGAFACTORY TEXAS",
+    "FREE IN YOUR BROWSER · 20 DRIVERS · 60 HZ PHYSICS"
   ],
   "trims": [
     {
@@ -26,7 +62,7 @@
       "name": "Performance",
       "roadLegal": true,
       "seats": 2,
-      "highlights": ["0–60 mph under 1 s (claimed)", "300+ miles range", "Full-width tail light, rear thruster array"],
+      "highlights": ["0–60 mph under 1 s (claimed)", "300+ miles range", "Full-width tail light, active rear wing"],
       "deposit": "$50,000",
       "depositNote": "$5,000 due at reservation (Electrek), described by Tesla as fully refundable; $45,000 within 10 days"
     },
@@ -35,7 +71,7 @@
       "name": "Thrust",
       "roadLegal": true,
       "seats": 2,
-      "highlights": ["Added cold-gas thruster package", "Cornering beyond 2 g claimed with fan suction", "Deposit per coverage: $250,000"],
+      "highlights": ["0–60 mph in 0.81 s, timed at the reveal", "Cold-gas thruster package, developed with SpaceX", "Cornering beyond 2 g claimed with fan suction"],
       "deposit": "$250,000",
       "depositNote": "Reported deposit per Tesla's reservation page"
     },
@@ -45,16 +81,20 @@
       "roadLegal": false,
       "roadLegalNote": "Marked as not road legal",
       "seats": 1,
-      "highlights": ["Single seat", "Invitation only", "Under 0.59 s to 60 mph claimed"],
+      "highlights": ["Single seat", "Invitation only", "Ten thrusters; under 0.59 s to 60 mph claimed"],
       "deposit": null,
       "depositNote": "Not publicly listed"
     }
   ],
   "timeline": [
-    { "year": "2017", "title": "Second-gen Roadster unveiled", "text": "Prototype shown on a Roadstar chassis; Musk promises 0–60 in 1.9 s, 620 miles range and SpaceX-option cold-gas thrusters." },
+    { "year": "2017", "title": "Second-gen Roadster unveiled", "text": "Prototype shown at the Tesla semi event; Musk promises 0–60 in 1.9 s, 620 miles of range and an optional SpaceX cold-gas thruster package." },
     { "year": "2020–2025", "title": "Repeated delays", "text": "Production slips year after year alongside Cybertruck; every previously announced date is missed." },
     { "year": "2026", "title": "15 October: the reveal", "text": "Revealed at SpaceX McGregor. Drives up a ramp, sticks upside down, flips on thrusters. 0.81 s to 60 timed at the event." },
-    { "year": "2028", "title": "Targeted production", "text": "Musk: quote \"2028, actually\". Roadster Arena treats this with appropriate optimism." }
+    { "year": "2028", "title": "Targeted production", "text": "Musk, at the reveal: \"2028, actually.\" Roadster Arena treats that with appropriate optimism." }
+  ],
+  "heritage": [
+    { "year": "2018", "title": "Starman", "text": "The original Roadster flew Falcon Heavy's first test flight as its payload — interplanetary object 2018-017A, still out there." },
+    { "year": "2026", "title": "Space tech comes home", "text": "Gen-2 debuts Tesla–SpaceX cold-gas thrusters — and McGregor, a rocket test range, as its reveal stage." }
   ],
   "honesty": {
     "note": "Tesla has missed every previously announced Roadster delivery date so far. All figures on this page are claims made by Tesla at the time of the reveal and have not been independently verified.",

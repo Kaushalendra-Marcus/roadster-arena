@@ -20,7 +20,7 @@ import { Predictor, type OwnCarSnapshot } from "./prediction.js";
 import { RemoteInterp } from "./remotes.js";
 import { createArenaView, type ArenaView } from "./arena.js";
 import { createCarVisual, colourFor, type CarVisual } from "./car-model.js";
-import { initShowroom } from "./landing.js";
+import { initGarage, initShowroom } from "./landing.js";
 
 const CFG = DEFAULT_GAMEPLAY;
 
@@ -72,54 +72,275 @@ const cam = {
 
 // ============================== landing page ==============================
 
+interface RoadsterSpec {
+  id: string;
+  label: string;
+  value: string;
+  note?: string;
+  claimed?: boolean;
+}
+interface RoadsterHotspot {
+  id: string;
+  label: string;
+  value: string;
+  anchor?: { x?: number; y?: number; z?: number };
+  tagY?: number;
+}
+interface RoadsterTrim {
+  id: string;
+  name: string;
+  roadLegal: boolean;
+  roadLegalNote?: string;
+  seats: number;
+  highlights: string[];
+  deposit: string | null;
+  depositNote?: string;
+}
 interface RoadsterContent {
-  specs: { label: string; value: string }[];
+  sources?: { label: string; url: string }[];
+  reveal: {
+    displayDate: string;
+    location: string;
+    summary: string;
+    delayNote?: string;
+    quote: { text: string; attribution: string };
+    footage?: { src: string; label: string };
+  };
+  heroStats: { id?: string; value?: string; label: string }[];
+  specs: RoadsterSpec[];
+  garage?: { hotspots?: RoadsterHotspot[] };
+  ticker?: string[];
+  trims: RoadsterTrim[];
+  timeline: { year: string; title: string; text: string }[];
+  heritage?: { year: string; title: string; text: string }[];
   honesty: { note: string };
   reservations: { buttonLabel: string };
 }
 
-async function initFacts(): Promise<void> {
-  const facts = (await import("../../content/roadster.json")).default as RoadsterContent;
+const $id = <T extends HTMLElement>(id: string): T | null =>
+  document.getElementById(id) as T | null;
 
-  const grid = document.getElementById("fact-grid") as HTMLElement;
-  const items: HTMLElement[] = [];
-  for (const f of facts.specs.slice(0, 5)) {
-    const div = document.createElement("div");
-    const dt = document.createElement("dt");
-    dt.textContent = f.label;
-    const dd = document.createElement("dd");
-    dd.textContent = f.value;
-    div.append(dt, dd);
-    items.push(div);
+/**
+ * Fill the gaming landing from content/roadster.json (spec 10.2). Every node
+ * is optional — missing markup or missing data simply skips that block.
+ */
+function renderLanding(facts: RoadsterContent): void {
+  // hero stat bar — official reveal figures with short labels
+  const heroStats = $id("hero-stats");
+  if (heroStats) {
+    const byId = new Map(facts.specs.map((s) => [s.id, s]));
+    const cells: HTMLElement[] = [];
+    for (const stat of facts.heroStats ?? []) {
+      const value = stat.value ?? (stat.id ? (byId.get(stat.id)?.value ?? "") : "");
+      if (!value) continue;
+      const cell = document.createElement("div");
+      const b = document.createElement("b");
+      b.textContent = value;
+      const span = document.createElement("span");
+      span.textContent = stat.label;
+      cell.append(b, span);
+      cells.push(cell);
+    }
+    heroStats.replaceChildren(...cells);
   }
-  grid.replaceChildren(...items);
 
-  (document.getElementById("legal-disclaimer") as HTMLElement).textContent = facts.honesty.note;
-  const reserveBtn = document.getElementById("reserve-button") as HTMLAnchorElement;
+  // ticker — the strip is rendered twice so the −50% loop is seamless
+  const track = $id("ticker-track");
+  if (track) {
+    const doubled = [...(facts.ticker ?? []), ...(facts.ticker ?? [])];
+    track.replaceChildren(
+      ...doubled.map((text) => {
+        const span = document.createElement("span");
+        span.textContent = text;
+        return span;
+      }),
+    );
+  }
+
+  // garage figure grid — the full official spec list
+  const grid = $id("garage-grid");
+  if (grid) {
+    const cells: HTMLElement[] = [];
+    for (const spec of facts.specs ?? []) {
+      const div = document.createElement("div");
+      const dt = document.createElement("dt");
+      dt.textContent = spec.label;
+      const dd = document.createElement("dd");
+      dd.textContent = spec.value;
+      if (spec.note) {
+        const small = document.createElement("small");
+        small.textContent = spec.note;
+        dd.append(small);
+      }
+      div.append(dt, dd);
+      cells.push(div);
+    }
+    grid.replaceChildren(...cells);
+  }
+
+  // reveal — lede, quote, fan footage tag
+  const lede = $id("reveal-lede");
+  if (lede) {
+    const parts = [facts.reveal.summary];
+    if (facts.reveal.delayNote) parts.push(`${facts.reveal.delayNote}.`);
+    lede.textContent = parts.join(" ");
+  }
+  const quote = $id("reveal-quote");
+  if (quote && facts.reveal.quote) {
+    const bq = document.createElement("blockquote");
+    bq.textContent = facts.reveal.quote.text;
+    const fig = document.createElement("figcaption");
+    fig.textContent = facts.reveal.quote.attribution;
+    quote.replaceChildren(bq, fig);
+  }
+  const footage = facts.reveal.footage;
+  const reelTag = $id("reel-tag");
+  if (reelTag && footage) reelTag.textContent = footage.label;
+  const video = $id("reveal-video") as HTMLVideoElement | null;
+  if (video && footage?.src && video.getAttribute("src") !== footage.src) {
+    video.setAttribute("src", footage.src);
+  }
+
+  // timeline — the road to the reveal
+  const timeline = $id("timeline");
+  if (timeline) {
+    const items: HTMLElement[] = [];
+    for (const step of facts.timeline ?? []) {
+      const li = document.createElement("li");
+      const year = document.createElement("span");
+      year.className = "year";
+      year.textContent = step.year;
+      const title = document.createElement("b");
+      title.className = "t";
+      title.textContent = step.title;
+      const p = document.createElement("p");
+      p.textContent = step.text;
+      li.append(year, title, p);
+      items.push(li);
+    }
+    timeline.replaceChildren(...items);
+  }
+
+  // heritage — Starman, and the SpaceX tech coming home
+  const heritage = $id("heritage");
+  if (heritage) {
+    const cards: HTMLElement[] = [];
+    for (const item of facts.heritage ?? []) {
+      const article = document.createElement("article");
+      const year = document.createElement("span");
+      year.className = "year";
+      year.textContent = item.year;
+      const b = document.createElement("b");
+      b.textContent = item.title;
+      const p = document.createElement("p");
+      p.textContent = item.text;
+      article.append(year, b, p);
+      cards.push(article);
+    }
+    heritage.replaceChildren(...cards);
+  }
+
+  // editions — trims as a character-select screen
+  const editions = $id("editions");
+  if (editions) {
+    const cards: HTMLElement[] = [];
+    for (const trim of facts.trims ?? []) {
+      const article = document.createElement("article");
+      if (!trim.roadLegal) article.classList.add("invite");
+
+      const badge = document.createElement("span");
+      badge.className = `badge ${trim.roadLegal ? "legal" : "no"}`;
+      badge.textContent = trim.roadLegal ? "Road-legal" : (trim.roadLegalNote ?? "Not road-legal");
+
+      const name = document.createElement("h3");
+      name.className = "name";
+      name.textContent = trim.name;
+      const sub = document.createElement("span");
+      sub.textContent = `${trim.roadLegal ? "Road-legal" : "Invite only"} · ${trim.seats} ${
+        trim.seats === 1 ? "seat" : "seats"
+      }`;
+      name.append(sub);
+
+      const list = document.createElement("ul");
+      for (const point of trim.highlights ?? []) {
+        const li = document.createElement("li");
+        li.textContent = point;
+        list.append(li);
+      }
+
+      const deposit = document.createElement("div");
+      deposit.className = "deposit";
+      const amount = document.createElement("b");
+      amount.textContent = trim.deposit ?? "Invite only";
+      const label = document.createElement("span");
+      label.textContent = trim.deposit ? "refundable deposit" : "no public deposit";
+      deposit.append(amount, label);
+
+      article.append(badge, name, list, deposit);
+      if (trim.depositNote) {
+        const note = document.createElement("p");
+        note.className = "fine";
+        note.textContent = trim.depositNote;
+        article.append(note);
+      }
+      cards.push(article);
+    }
+    editions.replaceChildren(...cards);
+  }
+
+  // honesty note + reserve wiring (spec 3.3: no owner link → button disabled)
+  const disclaimer = $id("legal-disclaimer");
+  if (disclaimer) disclaimer.textContent = facts.honesty.note;
+
+  const reserveBtn = $id("reserve-button") as HTMLAnchorElement | null;
+  const reserveNote = $id("reserve-note");
   const env = (import.meta as unknown as { env: Record<string, string | undefined> }).env ?? {};
   const reserveUrl = env.VITE_RESERVE_URL ?? "";
-  if (reserveUrl) {
-    reserveBtn.href = reserveUrl;
-    (document.getElementById("reserve-note") as HTMLElement).textContent = `Opens the official ${facts.reservations.buttonLabel} page in a new tab.`;
-  } else {
-    // spec 3.3: no valid owner link yet → the button stays but reservation
-    // simply isn't wired astray
-    reserveBtn.classList.add("is-disabled");
-    reserveBtn.removeAttribute("href");
+  if (reserveBtn) {
+    if (reserveUrl) {
+      reserveBtn.href = reserveUrl;
+      if (reserveNote) {
+        reserveNote.textContent = `Opens the official ${facts.reservations.buttonLabel} page in a new tab. Deposits are per Tesla's reservation terms.`;
+      }
+    } else {
+      reserveBtn.classList.add("is-disabled");
+      reserveBtn.removeAttribute("href");
+      if (reserveNote) reserveNote.textContent = facts.honesty.note;
+    }
   }
-  (document.getElementById("foot-version") as HTMLElement).textContent = "revealed 2026";
+
+  // footer — sources + version stamp
+  const sourcesEl = $id("foot-sources");
+  const sources = facts.sources ?? [];
+  if (sourcesEl && sources.length) {
+    const nodes: (Node | string)[] = ["Sources: "];
+    sources.forEach((source, index) => {
+      const a = document.createElement("a");
+      a.href = source.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = source.label;
+      nodes.push(a);
+      if (index < sources.length - 1) nodes.push(" · ");
+    });
+    sourcesEl.replaceChildren(...nodes);
+  }
+  const footVersion = $id("foot-version");
+  if (footVersion) footVersion.textContent = "revealed 2026";
 }
 
 function initLanding(): void {
   document.title = "Roadster Arena — drive it, then leave the ground";
 
-  // hero CTA = the arena entry
-  (document.getElementById("play-now") as HTMLButtonElement).addEventListener("click", () => {
+  // hero CTA (topbar + hero) = the arena entry
+  const enterArena = () => {
     hud.showGame();
     hud.showJoinOverlay(true);
-    (document.getElementById("join-name") as HTMLInputElement).focus();
-  });
-  (document.getElementById("join-back") as HTMLButtonElement).addEventListener("click", () => {
+    (document.getElementById("join-name") as HTMLInputElement | null)?.focus();
+  };
+  document.getElementById("play-now")?.addEventListener("click", enterArena);
+  document.getElementById("play-now-top")?.addEventListener("click", enterArena);
+  document.getElementById("join-back")?.addEventListener("click", () => {
     hud.showJoinOverlay(false);
     hud.showLanding();
   });
@@ -133,9 +354,21 @@ function initLanding(): void {
   } catch (err) {
     console.error("showroom init failed", err);
   }
-  void initFacts().catch((err) => {
-    console.error("facts init failed", err);
-  });
+
+  void (async () => {
+    try {
+      const facts = (await import("../../content/roadster.json")).default as RoadsterContent;
+      renderLanding(facts);
+      initGarage(facts.garage?.hotspots ?? []);
+    } catch (err) {
+      console.error("landing content failed", err);
+      try {
+        initGarage([]);
+      } catch (garageErr) {
+        console.error("garage init failed", garageErr);
+      }
+    }
+  })();
 }
 
 // ============================== game bootstrap ============================
