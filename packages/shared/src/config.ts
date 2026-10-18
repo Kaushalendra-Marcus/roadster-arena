@@ -129,7 +129,7 @@ export const DEFAULT_GAMEPLAY: GameplayConfig = {
   },
   boost: { duration: 1.0, impulse: 24, cooldown: 5.0 },
   respawn: { ghostSeconds: 1.5, killY: -20 },
-  arena: { halfSize: 300, softWallRadius: 270, softWallForce: 30, wallRestitution: 0.1 },
+  arena: { halfSize: 300, softWallRadius: 286, softWallForce: 30, wallRestitution: 0.1 },
   gate: { boostImpulse: 18, cooldownSeconds: 3 },
 };
 
@@ -145,7 +145,7 @@ export const DEFAULT_ROOMS: RoomsConfig = {
   perIPConnectionLimit: 5,
   physicsTickHz: 60,
   stateBroadcastHz: 20,
-  inputRateHz: 30,
+  inputRateHz: 60,
   emoteCooldownMs: 1200,
   nameMinLength: 2,
   nameMaxLength: 16,

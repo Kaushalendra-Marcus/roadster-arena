@@ -539,7 +539,14 @@ export function stepCar(
   if (mode === "ground" || mode === "grip" || mode === "boost") {
     if (throttle !== 0) {
       const accel = throttle > 0 ? ph.groundAccel : ph.groundBrakeAccel;
-      newLong += throttle * accel * dt;
+      const cap = mode === "boost" ? ph.boostTopSpeed : ph.topSpeed;
+      // Throttle only accelerates up to the ceiling: while already over it
+      // (a just-ended burst, a slope) it adds nothing and the cap step bleeds
+      // the excess; from below, the result pins exactly at the ceiling.
+      if (throttle < 0 || long <= cap) {
+        newLong += throttle * accel * dt;
+        if (throttle > 0 && newLong > cap) newLong = cap;
+      }
     }
     // tyres eat sideways velocity, a touch looser mid-boost
     const lateralGrip = ph.grip_Lateral * (mode === "boost" ? 0.7 : 1);
@@ -554,7 +561,12 @@ export function stepCar(
     // hovering: slower drift; throttle nudges forward. Vertical is NOT
     // decayed here — the altitude servo in 4b commands exact rates, and a
     // straight exp decay bent every commanded climb into a ~45% plateau.
-    if (throttle !== 0) newLong += throttle * ph.hoverLateralAccel * dt;
+    if (throttle !== 0) {
+      if (throttle < 0 || long <= ph.topSpeed) {
+        newLong += throttle * ph.hoverLateralAccel * dt;
+        if (throttle > 0 && newLong > ph.topSpeed) newLong = ph.topSpeed;
+      }
+    }
     newLat += steer * ph.hoverLateralAccel * dt;
     newLat *= Math.exp(-0.8 * dt);
     const yawAngle = -ph.hoverTurnRate * steer * 0.7 * dt;
@@ -575,7 +587,17 @@ export function stepCar(
   }
 
   const topSpeed = mode === "boost" ? ph.boostTopSpeed : ph.topSpeed;
-  newLong = clamp(newLong, -16, topSpeed);
+  if (newLong > topSpeed) {
+    // While the boost window is live the ceiling stays crisp: the burst lands
+    // as a clean punch and sustained thrust pins exactly at boostTopSpeed.
+    // Any other over-speed — the moment the window ends, gravity down a
+    // slope — bleeds off instead of the old one-tick 68 → 60 m/s clamp that
+    // read as the car stabbing its own brakes.
+    newLong = mode === "boost"
+      ? topSpeed
+      : topSpeed + (newLong - topSpeed) * Math.exp(-3.5 * dt);
+  }
+  if (newLong < -16) newLong = -16;
 
   // ---------- 6b. cold-gas thrusters (airborne pitch thrust) -----------------
   // Pitching in the air fires the thruster array along the car's own up:
@@ -700,14 +722,17 @@ export function stepCar(
   };
 
   const softR = ctx.cfg.arena.softWallRadius;
-  const r2 = p.x * p.x + p.z * p.z;
-  if (r2 > softR * softR) {
-    const r = Math.sqrt(r2) || 1;
+  const ax = Math.abs(p.x);
+  const az = Math.abs(p.z);
+  if (ax > softR || az > softR) {
+    // Square boundary: the arena is a square city, and the old radial push
+    // cut a circle through the outer blocks — cars driving the ring road's
+    // corners or the far cells were dragged sideways by an invisible force.
     const push = ctx.cfg.arena.softWallForce * dt;
     targetV = {
-      x: targetV.x - (p.x / r) * push,
+      x: targetV.x - (ax > softR ? Math.sign(p.x) * push : 0),
       y: targetV.y,
-      z: targetV.z - (p.z / r) * push,
+      z: targetV.z - (az > softR ? Math.sign(p.z) * push : 0),
     };
   }
 

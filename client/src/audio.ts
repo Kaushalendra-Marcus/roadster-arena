@@ -1,11 +1,12 @@
 /**
- * Runtime-generated WebAudio (spec 3.2): engine tone follows speed, wind
- * rises with hover, boost punches a filtered saw, bumps thump, gate whooshes.
- * No audio files → no licensing questions, ~2 kB of code.
+ * Runtime-generated WebAudio (spec 3.2): thrusters, bumps and gates only —
+ * boost punches a filtered saw, hover lifts a steady thruster wind, bumps
+ * thump, gate whooshes. Speed itself is silent (EV glide). No audio files →
+ * no licensing questions, ~2 kB of code.
  */
 
 export interface GameAudio {
-  setEngine(speedRatio: number, boost: boolean, hover: boolean): void;
+  setEngine(boost: boolean, hover: boolean): void;
   bump(strength: number): void;
   gate(): void;
   cheer(): void;
@@ -20,7 +21,7 @@ export function createAudio(): GameAudio {
   master.gain.value = 0.55;
   master.connect(ctx.destination);
 
-  // ---- engine: two detuned saws through a lowpass ----
+  // ---- engine: two detuned saws through a lowpass (idle bed + boost punch) ----
   const osc1 = ctx.createOscillator();
   osc1.type = "sawtooth";
   const osc2 = ctx.createOscillator();
@@ -29,8 +30,10 @@ export function createAudio(): GameAudio {
   engineGain.gain.value = 0.0001;
   const engineFilter = ctx.createBiquadFilter();
   engineFilter.type = "lowpass";
-  engineFilter.frequency.value = 500;
+  engineFilter.frequency.value = 300;
   const enginePan = ctx.createStereoPanner();
+  osc1.frequency.value = 62;
+  osc2.frequency.value = 65;
   osc1.connect(engineGain);
   osc2.connect(engineGain);
   engineGain.connect(engineFilter);
@@ -56,7 +59,7 @@ export function createAudio(): GameAudio {
   windGain.gain.value = 0.0001;
   const windFilter = ctx.createBiquadFilter();
   windFilter.type = "bandpass";
-  windFilter.frequency.value = 700;
+  windFilter.frequency.value = 920;
   windFilter.Q.value = 0.6;
   wind.connect(windFilter);
   windFilter.connect(windGain);
@@ -64,15 +67,12 @@ export function createAudio(): GameAudio {
   wind.start();
 
   return {
-    setEngine(speedRatio, boost, hover) {
+    setEngine(boost, hover) {
       const t = ctx.currentTime;
-      const base = 58 + speedRatio * 210; // Hz
-      osc1.frequency.setTargetAtTime(base, t, 0.06);
-      osc2.frequency.setTargetAtTime(base * 1.007 + 2, t, 0.06);
-      engineFilter.frequency.setTargetAtTime(360 + speedRatio * 2600 + (boost ? 900 : 0), t, 0.08);
-      engineGain.gain.setTargetAtTime(0.045 + speedRatio * 0.11 + (boost ? 0.05 : 0), t, 0.1);
-      windGain.gain.setTargetAtTime(hover ? 0.1 : speedRatio * 0.04, t, 0.15);
-      windFilter.frequency.setTargetAtTime(hover ? 900 : 500 + speedRatio * 700, t, 0.2);
+      // speed makes no sound: a steady idle bed plus the two thrust states
+      engineFilter.frequency.setTargetAtTime(boost ? 1500 : 300, t, 0.08);
+      engineGain.gain.setTargetAtTime(boost ? 0.13 : 0.012, t, 0.1);
+      windGain.gain.setTargetAtTime(hover ? 0.12 : 0.0001, t, 0.15);
     },
     bump(strength) {
       const t = ctx.currentTime;

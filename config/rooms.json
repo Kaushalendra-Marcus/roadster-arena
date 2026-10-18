@@ -11,7 +11,7 @@
   "perIPConnectionLimit": 5,
   "physicsTickHz": 60,
   "stateBroadcastHz": 20,
-  "inputRateHz": 30,
+  "inputRateHz": 60,
   "emoteCooldownMs": 1200,
   "nameMinLength": 2,
   "nameMaxLength": 16,

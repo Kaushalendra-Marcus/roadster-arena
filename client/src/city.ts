@@ -2,8 +2,8 @@
  * City dressing (spec 8 companion): every visual that has no collider —
  * streets, lane dashes, crosswalks, sidewalks, per-cell plates, park and
  * basketball court, solar farm, pools, helipad, house roofs, trees, lamps,
- * parked cars, wind turbines, fountain — plus the GLB building kits and the
- * drifting hot-air balloons.
+ * parked cars and street traffic, wind turbines, fountain — plus the GLB
+ * building kits and the drifting hot-air balloons.
  *
  * Everything derives from the exported CITY tables in maps.ts (streets,
  * cells, themed footprints), so physics and visuals cannot drift apart.
@@ -20,6 +20,7 @@ import {
   THEME_BUILDINGS,
   type CityCell,
 } from "@roadster-arena/shared";
+import { buildParkedCarFleet, buildTraffic } from "./traffic.js";
 
 const STREET_LEN = ARENA_HALF * 2 - 24;
 
@@ -288,54 +289,7 @@ function buildParkingLot(scene: THREE.Scene, cell: CityCell, cars: Item[], stall
 
 // ============================== props ======================================
 
-function buildProps(scene: THREE.Scene, cars: Item[]): void {
-  // parked cars along every street (curb lanes), skipping intersections
-  const palette = [0xd8d9d5, 0xf2c14e, 0x4a7fb5, 0x2e3742, 0xb4463f, 0x6f9e58];
-  for (const l of CITY_STREET_LINES) {
-    for (let t = -ARENA_HALF + 44; t <= ARENA_HALF - 44; t += 27) {
-      if (CITY_STREET_LINES.some((o) => Math.abs(t - o) < 26)) continue;
-      if (Math.abs(t) < 26 && Math.abs(l) < 26) continue; // plaza crossing
-      const jitter = hash(l | 0, t | 0, 5);
-      const colour = palette[hash(t | 0, l | 0, palette.length)];
-      cars.push({ x: l - 6.9, y: 0, z: t + jitter, ry: jitter % 2 === 0 ? 0.02 : Math.PI - 0.02, color: colour });
-      cars.push({ x: l + 6.9, y: 0, z: t - jitter, ry: jitter % 2 === 0 ? Math.PI + 0.02 : -0.02, color: palette[(hash(l | 0, (t + 7) | 0, palette.length))] });
-      cars.push({ x: t + jitter, y: 0, z: l - 6.9, ry: Math.PI / 2 + 0.02, color: palette[hash((t + 3) | 0, l | 0, palette.length)] });
-      cars.push({ x: t - jitter, y: 0, z: l + 6.9, ry: -Math.PI / 2 + 0.02, color: palette[hash((t + 11) | 0, (l + 5) | 0, palette.length)] });
-    }
-  }
-  const body = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(1.78, 0.62, 3.9),
-    new THREE.MeshStandardMaterial({ roughness: 0.4, metalness: 0.35 }),
-    cars.length,
-  );
-  const glass = new THREE.InstancedMesh(
-    new THREE.BoxGeometry(1.5, 0.5, 1.9),
-    new THREE.MeshStandardMaterial({ color: 0x1b2730, roughness: 0.25, metalness: 0.4 }),
-    cars.length,
-  );
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const p = new THREE.Vector3();
-  const s = new THREE.Vector3(1, 1, 1);
-  const c = new THREE.Color();
-  cars.forEach((it, i) => {
-    q.setFromEuler(new THREE.Euler(0, it.ry ?? 0, 0));
-    p.set(it.x, 0.42, it.z);
-    m.compose(p, q, s);
-    body.setMatrixAt(i, m);
-    c.setHex(it.color ?? 0xd8d9d5);
-    body.setColorAt(i, c);
-    p.set(it.x, 0.92, it.z);
-    m.compose(p, q, s);
-    glass.setMatrixAt(i, m);
-  });
-  body.instanceMatrix.needsUpdate = true;
-  if (body.instanceColor) body.instanceColor.needsUpdate = true;
-  glass.instanceMatrix.needsUpdate = true;
-  body.castShadow = true;
-  glass.castShadow = false;
-  scene.add(body, glass);
-
+function buildProps(scene: THREE.Scene): void {
   // street lamps along the avenues and the centre road
   const poles: Item[] = [];
   const heads: Item[] = [];
@@ -666,7 +620,9 @@ export function buildCity(scene: THREE.Scene): void {
   buildStreets(scene);
   const cars: Item[] = [];
   for (const cell of CITY_CELLS) buildCell(scene, cell, cars);
-  buildProps(scene, cars);
+  buildParkedCarFleet(scene, cars);
+  buildProps(scene);
+  buildTraffic(scene);
   buildingKits(scene);
   buildBalloons(scene);
 }

@@ -48,7 +48,7 @@
   },
   "arena": {
     "halfSize": 300,
-    "softWallRadius": 270,
+    "softWallRadius": 286,
     "softWallForce": 30,
     "wallRestitution": 0.1
   },

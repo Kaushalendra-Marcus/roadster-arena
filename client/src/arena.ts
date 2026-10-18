@@ -298,10 +298,18 @@ export function createArenaView(canvas: HTMLCanvasElement, cfg: GameplayConfig, 
     scene.add(strip);
 
     const ringMat = new THREE.MeshBasicMaterial({ color: 0xff7a1a, transparent: true, opacity: 0.35 });
-    const ring = new THREE.Mesh(new THREE.RingGeometry(cfg.arena.softWallRadius - 1.1, cfg.arena.softWallRadius, 96), ringMat);
-    ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.03;
-    scene.add(ring);
+    const boundR = cfg.arena.softWallRadius;
+    const span = cfg.arena.halfSize * 2;
+    const mkBoundBar = (w: number, d: number, x: number, z: number) => {
+      const bar = new THREE.Mesh(new THREE.PlaneGeometry(w, d), ringMat);
+      bar.rotation.x = -Math.PI / 2;
+      bar.position.set(x, 0.03, z);
+      scene.add(bar);
+    };
+    mkBoundBar(span, 1.2, 0, boundR);
+    mkBoundBar(span, 1.2, 0, -boundR);
+    mkBoundBar(1.2, span, boundR, 0);
+    mkBoundBar(1.2, span, -boundR, 0);
 
     const pads = new THREE.Mesh(new THREE.RingGeometry(18, 19.2, 48), new THREE.MeshBasicMaterial({ color: 0x7ec8ff, transparent: true, opacity: 0.3, side: THREE.DoubleSide }));
     pads.rotation.x = -Math.PI / 2;

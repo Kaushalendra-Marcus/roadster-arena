@@ -46,6 +46,10 @@ interface CarEntry {
   ipAddress: string | undefined;
   lastRespawnRequestMs: number;
   lastGateMs: Map<number, number>;
+  /** speed commanded this tick before the solver resolves contacts */
+  preStepSpeed: number;
+  /** debounce for car-versus-building crash thumps */
+  lastCrashMs: number;
 }
 
 export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
@@ -196,6 +200,8 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
       ipAddress: userData.ip,
       lastRespawnRequestMs: 0,
       lastGateMs: new Map(),
+      preStepSpeed: 0,
+      lastCrashMs: Number.NEGATIVE_INFINITY,
     });
 
     // spawn protection window (spec 6.3)
@@ -306,7 +312,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
     const now = this.clock.currentTime;
 
     // 1) consume at most one buffered input per car per tick (spec 5.2:
-    //    60 Hz step, 30 Hz input), then hold it between packets. The physics
+    //    60 Hz step, one input per tick), then hold it between packets. The physics
     //    must advance every tick even when the input buffer is temporarily
     //    empty, otherwise cars stutter and prediction constantly corrects.
     for (const [sessionId, entry] of this.cars) {
@@ -322,6 +328,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
         nowMs: now,
       });
       const velocity = entry.car.body.linvel();
+      entry.preStepSpeed = Math.hypot(velocity.x, velocity.y, velocity.z);
       const player = this.state.players.get(sessionId);
       if (player) {
         // One point per metre driven, with a small airborne speed bonus.
@@ -381,10 +388,37 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
         return;
       }
 
-      // ---- car ↔ gate sensor (spec 8: small boost flying through) ---------
       const carSession = s1 ?? s2;
       const k1 = this.world.kindOf(h1);
       const k2 = this.world.kindOf(h2);
+
+      // ---- car ↔ building/wall crash thump --------------------------------
+      // The solver stops a car dead on any facade, but only car↔car bumps used
+      // to make noise — a silent 245 km/h wall slam read as the car braking
+      // itself. Strength comes from the speed commanded before the solver.
+      if (carSession) {
+        const otherKind = s1 ? k2 : k1;
+        const entry = this.cars.get(carSession);
+        if (
+          entry &&
+          otherKind?.type === "static" &&
+          otherKind.label !== "ground" &&
+          entry.sim.ghostUntilMs <= now &&
+          now - entry.lastCrashMs >= 300
+        ) {
+          entry.lastCrashMs = now;
+          const p = entry.car.body.translation();
+          const msg: BumpMessage = {
+            x: p.x,
+            y: p.y,
+            z: p.z,
+            strength: Math.max(0.15, Math.min(1, entry.preStepSpeed / 40)),
+          };
+          this.broadcast(MESSAGES.bump, msg);
+        }
+      }
+
+      // ---- car ↔ gate sensor (spec 8: small boost flying through) ---------
       const gateKind = k1?.type === "gate" ? k1 : k2?.type === "gate" ? k2 : undefined;
       if (carSession && gateKind) {
         const entry = this.cars.get(carSession);

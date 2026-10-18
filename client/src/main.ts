@@ -11,7 +11,6 @@ import {
   type ArenaState,
   type CarPlayer,
 } from "@roadster-arena/shared";
-import * as THREE from "three";
 import { createNet, pickColour, type Net } from "./net.js";
 import { createInput } from "./input.js";
 import { createHud, pickEmote } from "./hud.js";
@@ -27,7 +26,6 @@ const CFG = DEFAULT_GAMEPLAY;
 
 type Vec3Like = { x: number; y: number; z: number };
 type QuatLike = { x: number; y: number; z: number; w: number };
-const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
 const hud = createHud();
 let audio: GameAudio | null = null;
@@ -326,7 +324,11 @@ function ownSnapshot(p: CarPlayer): OwnCarSnapshot {
 
 // ============================== the game loop =============================
 
-const INPUT_PERIOD_MS = 1000 / 30; // rooms.inputRateHz
+const INPUT_PERIOD_MS = 1000 / 60; // rooms.inputRateHz — one input per physics
+// tick: the server consumes exactly one buffered input per tick, so the client
+// must record one per tick too or reconcile replays fall short of the sim's
+// real timeline (each pending input used to cover two ticks, pulling the yaw
+// back a few degrees on every patch — a visible wobble while turning).
 const TICK_MS = 1000 / 60; // rooms.physicsTickHz
 
 function frame(nowMs: number): void {
@@ -491,7 +493,7 @@ function updateCamera(pos: Vec3Like, q: QuatLike, dtMs: number, drive: { steer: 
   // car's yaw angle from the quaternion (stable chase basis)
   const sin = 2 * (q.w * q.y + q.z * q.x);
   const cos = 1 - 2 * (q.y * q.y + q.z * q.z);
-  const yaw = atan2lerp(camYaw, Math.atan2(sin, cos), Math.min(1, dtMs / 200));
+  const yaw = atan2lerp(camYaw, Math.atan2(sin, cos), Math.min(1, dtMs / 90));
   camYaw = yaw;
 
   const dist = 8.2;
@@ -506,11 +508,13 @@ function updateCamera(pos: Vec3Like, q: QuatLike, dtMs: number, drive: { steer: 
     y: pos.y + 0.72,
     z: pos.z + Math.cos(yaw) * 10,
   };
-  const k = Math.min(1, dtMs / 85);
+  // the old chain (yaw 200 ms + position 85 ms) trailed the car by ~30° through
+  // a full-lock turn and swung back late — a floaty "the car is lagging" feel.
+  const k = Math.min(1, dtMs / 65);
   cam.pos.x += (target.x - cam.pos.x) * k;
   cam.pos.y += (target.y - cam.pos.y) * k;
   cam.pos.z += (target.z - cam.pos.z) * k;
-  const lk = Math.min(1, dtMs / 140);
+  const lk = Math.min(1, dtMs / 110);
   cam.look.x += (lookAt.x - cam.look.x) * lk;
   cam.look.y += (lookAt.y - cam.look.y) * lk;
   cam.look.z += (lookAt.z - cam.look.z) * lk;
@@ -526,8 +530,7 @@ function updateCamera(pos: Vec3Like, q: QuatLike, dtMs: number, drive: { steer: 
   arena.camera.rotateZ(cam.tilt);
 
   if (predictor && audio) {
-    const v = predictor.sim.body.linvel;
-    audio.setEngine(clamp(Math.hypot(v.x, v.y, v.z) / CFG.physics.topSpeed, 0, 1), predictor.sim.mode === "boost", predictor.sim.mode === "hover");
+    audio.setEngine(predictor.sim.mode === "boost", predictor.sim.mode === "hover");
   }
 }
 

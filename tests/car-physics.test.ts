@@ -180,6 +180,58 @@ describe("stepCar (shared arcade controller)", () => {
     expect(state.linvel.x).toBeLessThan(0);
   });
 
+  it("pushes back along both axes at the square boundary's corners", () => {
+    const { state, view } = makeBody({ y: 0.62 });
+    const sim = makeSim(view);
+    state.translation.x = CFG.arena.softWallRadius + 8;
+    state.translation.z = CFG.arena.softWallRadius + 8;
+    drive(sim, idle, 30);
+    expect(state.linvel.x).toBeLessThan(0);
+    expect(state.linvel.z).toBeLessThan(0);
+  });
+
+  it("leaves the outer city blocks free of the old radial drag", () => {
+    // (205, 205) is inside the square arena but outside the old radius-270
+    // circle: the corner cells used to be pulled toward the centre at
+    // 30 m/s² with no visible wall in sight.
+    const { state, view } = makeBody({ y: 0.62 });
+    const sim = makeSim(view);
+    state.translation.x = 205;
+    state.translation.z = 205;
+    drive(sim, idle, 30);
+    expect(Math.abs(state.linvel.x)).toBeLessThan(0.02);
+    expect(Math.abs(state.linvel.z)).toBeLessThan(0.02);
+  });
+
+  it("bleeds post-boost over-speed instead of hard-clamping it", () => {
+    const { state, view } = makeBody({ y: 0.62 });
+    const sim = makeSim(view);
+    const speed = () => Math.hypot(state.linvel.x, state.linvel.y, state.linvel.z);
+
+    // settle at the ground ceiling (throttle must pin, not creep above it)
+    drive(sim, { ...idle, throttle: 1 }, 300);
+    expect(speed()).toBeGreaterThan(CFG.physics.topSpeed - 2);
+    expect(speed()).toBeLessThan(CFG.physics.topSpeed + 0.5);
+
+    // recentre so the soft boundary can't pollute the measurements below
+    state.translation.x = 0;
+    state.translation.z = 0;
+
+    // the burst fires and pins at the boost ceiling
+    drive(sim, { ...idle, throttle: 1, boost: true }, 1, 5000);
+    expect(speed()).toBeGreaterThan(CFG.physics.topSpeed + 4);
+
+    // ride out the boost window (1 s) to its last pre-window tick, then one
+    // tick past its end: the old hard clamp popped straight back to topSpeed
+    // in that single tick; the bleed keeps the momentum decaying smoothly
+    drive(sim, { ...idle, throttle: 1, boost: false }, 61, 5016);
+    expect(speed()).toBeGreaterThan(CFG.physics.topSpeed + 3);
+
+    // ...and it still converges back to the ground ceiling
+    drive(sim, { ...idle, throttle: 1, boost: false }, 150, 6100);
+    expect(speed()).toBeLessThan(CFG.physics.topSpeed + 1.5);
+  });
+
   it("is deterministic: identical inputs, identical positions", () => {
     const run = () => {
       const { state, view } = makeBody({ y: 0.62 });
