@@ -309,6 +309,7 @@ export function createArenaView(canvas: HTMLCanvasElement, cfg: GameplayConfig, 
       });
       const dark = new THREE.MeshStandardMaterial({ color: 0x17232d, roughness: 0.32, metalness: 0.7 });
       const red = new THREE.MeshStandardMaterial({ color: 0xd52f38, emissive: 0x4b080c, emissiveIntensity: 0.5 });
+      const neon = new THREE.MeshBasicMaterial({ color: 0x78e7ff });
       const box = (geometry: THREE.BoxGeometry, material: THREE.Material, position: [number, number, number]) => {
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(...position);
@@ -320,6 +321,8 @@ export function createArenaView(canvas: HTMLCanvasElement, cfg: GameplayConfig, 
       box(new THREE.BoxGeometry(30, 14, 18), concrete, [0, 7, 0]);
       box(new THREE.BoxGeometry(24, 9, 0.18), glass, [0, 5.2, -9.12]);
       box(new THREE.BoxGeometry(24, 0.22, 1.8), dark, [0, 11.1, -9.7]);
+      box(new THREE.BoxGeometry(24, 0.08, 0.12), neon, [0, 10.65, -9.62]);
+      box(new THREE.BoxGeometry(30, 0.08, 0.12), neon, [0, 13.85, -8.9]);
       for (const x of [-13, -8, 8, 13]) box(new THREE.BoxGeometry(0.45, 10, 0.5), dark, [x, 5.2, -9.4]);
       box(new THREE.BoxGeometry(9, 0.12, 7), red, [0, 14.15, 0]);
       box(new THREE.BoxGeometry(2.2, 0.15, 6), dark, [-10.5, 14.2, 0]);
@@ -347,6 +350,7 @@ export function createArenaView(canvas: HTMLCanvasElement, cfg: GameplayConfig, 
 
     makeSign("M  McDONALD'S", "#b51e2b", -252, 8, -35, 1.4);
     makeSign("DRIVING TEST  ·  PASS THE BLUE GATES", "#176d92", 252, 5, 35, 0.9);
+    makeSign("STUNT LOOP  ·  COMPLETE THE CIRCLE", "#b51f35", 104, 18, 68, 1.15);
   }
 
   // plaza markings: launch strip + centre pad + soft-boundary ring

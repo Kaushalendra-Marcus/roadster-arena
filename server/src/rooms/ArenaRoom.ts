@@ -397,7 +397,7 @@ export class ArenaRoom extends Room<{ state: ArenaState; input: CarInput }> {
         if (along < 3) return; // crossing the plane the wrong way: nothing
         entry.lastGateMs.set(gateKind.gateIndex, now);
         const player = this.state.players.get(carSession);
-        if (player) player.score += 250;
+        if (player) player.score += gateKind.gateIndex === 0 ? 500 : 250;
         entry.car.body.setLinvel(
           {
             x: v.x + gate.forward.x * this.cfg.gate.boostImpulse,

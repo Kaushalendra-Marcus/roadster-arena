@@ -118,75 +118,43 @@ export function buildArenaDef(cfg: GameplayConfig): ArenaDef {
   // --- ring gate boost impulse direction (stage direction of travel) ---------
   // three ring gates floating over the park (spec 8: "ring gates in the air")
   gates.push(
-    { pos: { x: -20, y: 10, z: 120 }, forward: { x: 0, y: 0, z: -1 }, radius: 6 },
+    { pos: { x: 61, y: 34, z: 78 }, forward: { x: -1, y: 0, z: 0 }, radius: 4.5 },
     { pos: { x: -150, y: 14, z: -40 }, forward: { x: 1, y: 0, z: 0 }, radius: 6 },
     { pos: { x: 40, y: 18, z: -140 }, forward: { x: 0.4, y: 0, z: 0.9 }, radius: 7 },
   );
 
-  // --- twin jump ramps (one runway x -127..-93, two 40° slopes) --------------
-  // The controller rides slopes it can catch (~≤45°), so the launch feature is
-  // a straight wedge: drive up, launch off the apex, land down the far side.
+  // --- compact stunt ramp: reference-style open vertical C ------------------
+  // This is intentionally not a closed circle. The supplied reference shows a
+  // narrow launch ramp that sweeps from the floor into a tall wall and curls
+  // back toward the rider at the top. A Bezier spine gives the same silhouette
+  // while keeping the surface tangent-continuous for the grip controller.
   {
-    const z0 = 105;
-    const z1 = 115;
-    const x0 = -127;
-    const x1 = -110; // apex
-    const x2 = -93;
-    const h = 14;
-    const verts: number[] = [
-      x0, 0.05, z0, x0, 0.05, z1, x1, h, z0, x1, h, z1, // up-slope quad
-      x1, h, z0, x1, h, z1, x2, 0.05, z0, x2, 0.05, z1, // down-slope quad
-    ];
-    const idx = [0, 1, 2, 1, 3, 2, 4, 5, 6, 5, 7, 6];
-    colliders.push({
-      kind: "ramp",
-      pos: { x: 0, y: 0, z: 0 },
-      vertices: verts,
-      indices: idx,
-    });
-  }
-
-  // --- full vertical loop as ONE continuous ride surface ----------------------
-  // The ray-pin controller follows whatever surface its −up ray hits first, so
-  // the ramp must BE the loop's bottom: an ease curve rises tangentially into
-  // the ring's lowest point, and the ring's left branch stops high enough that
-  // the arch never cuts through a car riding the ramp below it. Hold GRIP to
-  // round the loop; riding off the left branch's end launches you back out.
-  {
-    const loopX = 130;
-    const loopZ = 120;
-    const R = 17;
-    const cy = R + 7; // ring centre; bottom apex (loopX, 7)
-    const width = 10; // across z
-    const cx0 = 95; // approach start
-    const apexY = 7; // cy - R
-    const zA = loopZ - width / 2;
-    const zB = loopZ + width / 2;
-
-    // stations: ease ramp from (95, 0.05) to the apex (130, 7), then the ring
-    // a from π (bottom) DOWN to π/2 (right side) and on to ≈ -2.55 rad
-    // (150° past the top), stopped at y ≈ 9.5 so the dead end is ~2.5 m
-    // above any car riding the ramp beneath it.
-    const aEnd = Math.acos((9.5 - cy) / R) * -1; // ≈ -2.55 rad
+    const rampZ = 78;
+    const width = 7;
+    const zA = rampZ - width / 2;
+    const zB = rampZ + width / 2;
+    const p0 = { x: 68, y: 0.08 };
+    const p1 = { x: 91, y: 0.08 };
+    const p2 = { x: 108, y: 16 };
+    const p3 = { x: 101, y: 28 };
+    const p4 = { x: 96, y: 39 };
+    const p5 = { x: 73, y: 41 };
+    const p6 = { x: 61, y: 34 };
     const stations: { x: number; y: number }[] = [];
-    const rampSegs = 24;
-    // Fine ring tessellation: the coarse 26-segment ring turned ~17° per
-    // facet — at racing speed every facet lip was a drop the collider
-    // crashed into. 176 segments ≈ 4° per facet keeps the ride smooth.
-    const ringSegs = 176;
-    // ease from a flush 0.05 lip to the apex; the lip is tiny enough that the
-    // contact solver just nudges the car onto the surface (full burial made
-    // the trimesh pierce the box from below and punch it into the sky)
-    for (let s = 0; s <= rampSegs; s++) {
-      const t = s / rampSegs;
-      const x = cx0 + (loopX - cx0) * t;
-      const y = 0.05 + (apexY - 0.05) * ((1 - Math.cos(Math.PI * t)) / 2);
-      stations.push({ x, y });
-    }
-    for (let s = 1; s <= ringSegs; s++) {
-      const a = Math.PI + ((aEnd - Math.PI) * s) / ringSegs;
-      stations.push({ x: loopX + R * Math.sin(a), y: Math.max(0.05, cy + R * Math.cos(a)) });
-    }
+    const point = (a: { x: number; y: number }, b: { x: number; y: number }, t: number) =>
+      ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    const cubic = (a: typeof p0, b: typeof p0, c: typeof p0, d: typeof p0, t: number) => {
+      const u = 1 - t;
+      return {
+        x: u * u * u * a.x + 3 * u * u * t * b.x + 3 * u * t * t * c.x + t * t * t * d.x,
+        y: u * u * u * a.y + 3 * u * u * t * b.y + 3 * u * t * t * c.y + t * t * t * d.y,
+      };
+    };
+    const addCubic = (a: typeof p0, b: typeof p0, c: typeof p0, d: typeof p0, count: number) => {
+      for (let i = 0; i <= count; i++) stations.push(cubic(a, b, c, d, i / count));
+    };
+    addCubic(p0, p1, p2, p3, 64);
+    addCubic(p3, p4, p5, p6, 64);
 
     const verts: number[] = [];
     const idx: number[] = [];
@@ -200,48 +168,10 @@ export function buildArenaDef(cfg: GameplayConfig): ArenaDef {
     colliders.push({
       kind: "gripTrack",
       pos: { x: 0, y: 0, z: 0 },
-      // low friction: steep loop walls have no business holding a
-      // non-gripping car (that parked cars mid-wall forever), and gentler
-      // contact friction means the fast entry bites don't eat the whole ride
-      friction: 0.45,
+      friction: 0.7,
       vertices: verts,
       indices: idx,
     });
-  }
-
-  // --- upside-down grip tube (a tunnel whose ceiling you drive along) --------
-  {
-    const ux = -60;
-    const uz = -110;
-    const len = 56;
-    const halfW = 5;
-    const rise = 11; // tunnel ceiling height
-    colliders.push(
-      // tunnel floor
-      {
-        kind: "gripTrack",
-        pos: { x: ux, y: 0.05, z: uz },
-        half: { x: len / 2, y: 0.05, z: halfW },
-      },
-      // side walls
-      {
-        kind: "gripTrack",
-        pos: { x: ux, y: 4, z: uz - halfW - 0.15 },
-        half: { x: len / 2, y: 4, z: 0.15 },
-      },
-      {
-        kind: "gripTrack",
-        pos: { x: ux, y: 4, z: uz + halfW + 0.15 },
-        half: { x: len / 2, y: 4, z: 0.15 },
-      },
-      // upside-down driving surface (the ceiling)
-      {
-        kind: "gripTrack",
-        pos: { x: ux, y: rise, z: uz },
-        half: { x: len / 2, y: 0.15, z: halfW },
-        angle: undefined,
-      },
-    );
   }
 
   // --- deterministic spawn ring on the plaza ---------------------------------
