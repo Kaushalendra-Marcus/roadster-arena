@@ -2,14 +2,15 @@
  * Landing 3D stages (spec 10.2) — both driven by the real Roadster asset:
  *  - `initShowroom()`: the hero. The GLB on a mirror floor under the arena
  *    glow — drag to spin, 360° arrows, wheel zoom, idle turntable.
- *  - `initGarage()`: the car section. The same model under a lab grid with
+ *  - `initGarage()`: the car section. The same model under a lab floor with
  *    spec hotspots pinned to model-space anchors (fractions of its bounding
  *    box, so re-exporting the asset cannot unhook them).
  *
- * The model is loaded once and cloned per stage (materials intentionally
- * shared). Source space: front = −Z, length ≈ 4.84, so both stages rotate a
- * yaw turntable instead of touching the mesh. Reference photography stands in
- * if the asset cannot load; stages pause when off-screen.
+ * Motion is integrated with a clamped delta time, not per-frame constants, so
+ * the turntable is identical at 60, 120 or 144 Hz. Source space: front = −Z,
+ * length ≈ 4.84, so both stages rotate a yaw turntable instead of touching
+ * the mesh. Reference photography stands in if the asset cannot load; stages
+ * pause when off-screen.
  */
 import * as THREE from "three";
 import { Reflector } from "three/examples/jsm/objects/Reflector.js";
@@ -19,6 +20,77 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 const CAR_URL = "/assets/reference/tesla_roadster_-_low_poly.glb";
 /** length of the car on stage (metres) — the source is 4.84 long */
 const CAR_LENGTH = 4.35;
+/** keep tyre and splitter geometry off the floor plane: coplanar surfaces
+ *  z-fight (flicker) exactly where the car touches the ground */
+const GROUND_CLEARANCE = 0.01;
+
+/** Mirror shader with a radial alpha fade. A plain Reflector ends in a hard
+ *  rim wherever the finite plane stops, which reads as a horizon "break";
+ *  fading to transparent lets the page gradient take over seamlessly. */
+const FADING_REFLECTOR = {
+  name: "FadingReflector",
+  uniforms: {
+    color: { value: null },
+    tDiffuse: { value: null },
+    textureMatrix: { value: null },
+    fadeStart: { value: 11 },
+    fadeEnd: { value: 27 },
+  },
+  vertexShader: /* glsl */ `
+    uniform mat4 textureMatrix;
+    varying vec4 vUv;
+    varying vec2 vFloor;
+    #include <common>
+    #include <logdepthbuf_pars_vertex>
+    void main() {
+      vUv = textureMatrix * vec4(position, 1.0);
+      vFloor = position.xy; // plane local space, before the floor is turned flat
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      #include <logdepthbuf_vertex>
+    }`,
+  fragmentShader: /* glsl */ `
+    uniform vec3 color;
+    uniform sampler2D tDiffuse;
+    uniform float fadeStart;
+    uniform float fadeEnd;
+    varying vec4 vUv;
+    varying vec2 vFloor;
+    #include <logdepthbuf_pars_fragment>
+    float blendOverlay(float base, float blend) {
+      return (base < 0.5 ? (2.0 * base * blend) : (1.0 - 2.0 * (1.0 - base) * (1.0 - blend)));
+    }
+    vec3 blendOverlay(vec3 base, vec3 blend) {
+      return vec3(blendOverlay(base.r, blend.r), blendOverlay(base.g, blend.g), blendOverlay(base.b, blend.b));
+    }
+    void main() {
+      #include <logdepthbuf_fragment>
+      vec4 base = texture2DProj(tDiffuse, vUv);
+      float fade = 1.0 - smoothstep(fadeStart, fadeEnd, length(vFloor));
+      gl_FragColor = vec4(blendOverlay(base.rgb, color), fade);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+};
+
+/** Soft-edged disc for the garage floor: colour at the centre, transparent
+ *  at the rim so the slab has no cut-off line. */
+function makeFloorTexture(rgb: string): THREE.CanvasTexture {
+  const size = 512;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const ctx = c.getContext("2d");
+  if (!ctx) return new THREE.CanvasTexture(c);
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, `rgba(${rgb}, 1)`);
+  g.addColorStop(0.52, `rgba(${rgb}, 1)`);
+  g.addColorStop(0.8, `rgba(${rgb}, 0.5)`);
+  g.addColorStop(1, `rgba(${rgb}, 0)`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
 export interface HotspotSpec {
   id: string;
@@ -51,15 +123,16 @@ function applyRoomEnv(renderer: THREE.WebGLRenderer, scene: THREE.Scene): void {
 
 /**
  * Showroom skin. The source asset is a red low-poly car with grey running
- * gear; these overrides turn it into the reveal car's spec — Ano White paint,
- * gold-tinted canopy glass, a red tail bar, a warm light blade and dark
- * wheels. Unknown materials keep whatever the asset authored.
+ * gear; the paint reuses the in-game paint spec (metallic silver/white,
+ * 0.62 metalness / 0.22 roughness) so the hero car matches the car you drive.
+ * The remaining overrides give it the reveal car's gold-tinted canopy and a
+ * red tail bar. Unknown materials keep whatever the asset authored.
  */
 const SKIN: Record<
   string,
   { color: number; metalness?: number; roughness?: number; emissive?: number; emissiveIntensity?: number }
 > = {
-  "Material.001": { color: 0xe9e5dc, metalness: 0.22, roughness: 0.3 }, // body paint
+  "Material.001": { color: 0xd7dbe0, metalness: 0.62, roughness: 0.22 }, // body paint
   "Material.002": { color: 0xcf1b1b, metalness: 0.2, roughness: 0.28, emissive: 0xff2a1f, emissiveIntensity: 0.7 }, // tail bar
   "Material.003": { color: 0xfff1dc, metalness: 0.1, roughness: 0.3, emissive: 0xffe7c4, emissiveIntensity: 0.4 }, // light blade
   "Material.004": { color: 0x101114, metalness: 0.35, roughness: 0.55 }, // lower intake
@@ -82,7 +155,11 @@ function fitCar(model: THREE.Object3D): THREE.Group {
   const center = box.getCenter(new THREE.Vector3());
   const scale = CAR_LENGTH / Math.max(size.x, size.z, size.y);
   model.scale.setScalar(scale);
-  model.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale);
+  model.position.set(
+    -center.x * scale,
+    -box.min.y * scale + GROUND_CLEARANCE,
+    -center.z * scale,
+  );
   model.traverse((object) => {
     const mesh = object as THREE.Mesh;
     if (!mesh.isMesh) return;
@@ -170,21 +247,17 @@ export function initShowroom(): void {
   camera.position.copy(CAM_BASE);
   camera.lookAt(TARGET);
 
-  // mirror floor with a darkening plane on top to fade with distance
+  // mirror floor that dissolves into the page gradient instead of ending on
+  // a hard rim (the old dark overlay also cut a visible horizon line)
   const reflector = new Reflector(new THREE.PlaneGeometry(60, 60), {
     textureWidth: 1024,
     textureHeight: 1024,
-    color: 0x46545e,
+    color: 0x3c4852,
+    shader: FADING_REFLECTOR,
   });
+  (reflector.material as THREE.ShaderMaterial).transparent = true;
   reflector.rotation.x = -Math.PI / 2;
   scene.add(reflector);
-  const dim = new THREE.Mesh(
-    new THREE.PlaneGeometry(60, 60),
-    new THREE.MeshBasicMaterial({ color: 0x101c24, transparent: true, opacity: 0.5, depthWrite: false }),
-  );
-  dim.rotation.x = -Math.PI / 2;
-  dim.position.y = 0.002;
-  scene.add(dim);
 
   // dashed turntable rings — neutral + accent
   const ringMat = new THREE.LineBasicMaterial({ color: 0xbfd9e4, transparent: true, opacity: 0.5 });
@@ -226,21 +299,19 @@ export function initShowroom(): void {
   // ============================== the car ============================
   const turntable = new THREE.Group(); // yaw spins this
   scene.add(turntable);
-  // soft round contact shadow (fake, cheap, reads like a studio floor)
+  // soft round contact shadow (fake, cheap, reads like a studio floor) —
+  // fixed to the floor, not parented to the spinning turntable
   const blob = new THREE.Mesh(
     new THREE.CircleGeometry(2.9, 48),
     new THREE.MeshBasicMaterial({ map: makeShadowTexture(), transparent: true, depthWrite: false }),
   );
   blob.rotation.x = -Math.PI / 2;
-  blob.position.y = 0.004;
-  turntable.add(blob);
+  blob.position.y = 0.014;
+  scene.add(blob);
 
-  let modelReady = false;
   void loadCar().then(
     (source) => {
       turntable.add(fitCar(source.clone(true)));
-      blob.position.y = 0.006;
-      modelReady = true;
     },
     () => showFallback(),
   );
@@ -258,6 +329,8 @@ export function initShowroom(): void {
   let dragging = false;
   let lastX = 0;
   let dolly = 0; // camera distance offset from CAM_BASE
+  let dollyTarget = 0;
+  const IDLE_SPIN = 0.066; // rad/s — gentle turntable
   const DOLLY_MIN = -3.6;
   const DOLLY_MAX = 6;
 
@@ -284,15 +357,17 @@ export function initShowroom(): void {
     // wheel over the car zooms the studio camera; once the dolly can't go
     // any further in this direction the gesture falls through and the page
     // scrolls instead (zoom exhausts before scroll takes over)
-    const next = Math.max(DOLLY_MIN, Math.min(DOLLY_MAX, dolly + e.deltaY * 0.008));
-    if (next === dolly) return;
+    const next = Math.max(DOLLY_MIN, Math.min(DOLLY_MAX, dollyTarget + e.deltaY * 0.008));
+    if (next === dollyTarget) return;
     e.preventDefault();
-    dolly = next;
+    dollyTarget = next;
   };
   canvas.addEventListener("pointerdown", onPointerDown);
   canvas.addEventListener("pointermove", onPointerMove);
   canvas.addEventListener("pointerup", onPointerUp);
   canvas.addEventListener("pointercancel", onPointerUp);
+  // losing the window mid-drag must not leave the turntable frozen
+  addEventListener("blur", onPointerUp);
   canvas.addEventListener("wheel", onWheel, { passive: false });
 
   const nudge = (dYaw: number) => {
@@ -313,34 +388,44 @@ export function initShowroom(): void {
   addEventListener("resize", resize);
   resize();
 
+  // pause the (heavy) mirror render while the hero is off-screen
+  let onScreen = true;
+  const io = new IntersectionObserver(
+    (entries) => (onScreen = entries.some((e) => e.isIntersecting)),
+    { rootMargin: "140px" },
+  );
+  io.observe(canvas);
+
   // ============================ render loop ==========================
+  // everything moves on delta time: identical at 60/120/144 Hz, and a long
+  // frame (tab switch, GC) is clamped instead of teleporting the car
   const startedAt = performance.now();
-  const render = () => {
-    const t = (performance.now() - startedAt) / 1000;
-    if (!document.hidden && !landing.classList.contains("hidden")) {
+  let lastFrame = startedAt;
+  const render = (now: number) => {
+    const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000));
+    lastFrame = now;
+    if (!document.hidden && onScreen && !landing.classList.contains("hidden")) {
+      const t = (now - startedAt) / 1000;
       // auto-spin unless the user is actively dragging; released drag glides
       if (!dragging) {
-        dragVel *= 0.94;
-        targetYaw += dragVel * 0.016 + 0.0011; // gentle idle turntable
+        dragVel *= Math.pow(0.94, dt * 60);
+        targetYaw += dragVel * dt + IDLE_SPIN * dt;
       }
-      yaw += (targetYaw - yaw) * Math.min(1, 8 * 0.016);
+      yaw += (targetYaw - yaw) * (1 - Math.exp(-8 * dt));
       turntable.rotation.y = yaw;
       ring.rotation.y = yaw * 0.55;
       ringOuter.rotation.y = -yaw * 0.32;
       ringMat.opacity = 0.5 + Math.sin(t * 1.7) * 0.08;
       accentMat.opacity = 0.32 + Math.sin(t * 1.7 + 1.3) * 0.1;
 
-      if (modelReady) {
-        // the car group already sits on the floor; bob the whole turntable
-        turntable.position.y = Math.sin(t * 0.9) * 0.03;
-      }
+      dolly += (dollyTarget - dolly) * (1 - Math.exp(-12 * dt));
       camera.position.copy(CAM_BASE).addScaledVector(CAM_DIR, dolly);
       camera.lookAt(TARGET);
       renderer.render(scene, camera);
     }
     requestAnimationFrame(render);
   };
-  render();
+  requestAnimationFrame(render);
 }
 
 /* ----------------------------- garage stage ------------------------------- */
@@ -367,16 +452,17 @@ export function initGarage(hotspots: HotspotSpec[] = []): void {
   camera.position.copy(CAM_BASE);
   camera.lookAt(TARGET);
 
-  // lab floor: dark slab, grid lines, warm pool under the car
+  // lab floor: a dark disc that fades out at the rim, plus a warm pool
   const slab = new THREE.Mesh(
     new THREE.CircleGeometry(16, 64),
-    new THREE.MeshBasicMaterial({ color: 0x080b10 }),
+    new THREE.MeshBasicMaterial({
+      map: makeFloorTexture("8, 11, 16"),
+      transparent: true,
+      depthWrite: false,
+    }),
   );
   slab.rotation.x = -Math.PI / 2;
   scene.add(slab);
-  const grid = new THREE.GridHelper(40, 40, 0x2b3b48, 0x151d25);
-  grid.position.y = 0.01;
-  scene.add(grid);
   const pool = new THREE.Mesh(
     new THREE.CircleGeometry(4.6, 48),
     new THREE.MeshBasicMaterial({ map: makeGlowTexture("255, 122, 26"), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
@@ -472,10 +558,15 @@ export function initGarage(hotspots: HotspotSpec[] = []): void {
   });
   canvas.addEventListener("pointerup", () => (dragging = false));
   canvas.addEventListener("pointercancel", () => (dragging = false));
+  addEventListener("blur", () => (dragging = false));
 
+  let viewW = 1;
+  let viewH = 1;
   const resize = () => {
     const w = canvas.clientWidth || 640;
     const h = canvas.clientHeight || 420;
+    viewW = w;
+    viewH = h;
     renderer.setSize(w, h, false);
     camera.aspect = w / h;
     // wider lens on a portrait stage: the car is viewed at 3/4, so its long
@@ -499,21 +590,25 @@ export function initGarage(hotspots: HotspotSpec[] = []): void {
   const worldPos = new THREE.Vector3();
   const carCenter = new THREE.Vector3();
   const viewDir = new THREE.Vector3();
-  const render = () => {
+  const IDLE_SPIN = 0.096; // rad/s
+  let lastFrame = performance.now();
+  const render = (now: number) => {
+    const dt = Math.min(0.05, Math.max(0.001, (now - lastFrame) / 1000));
+    lastFrame = now;
     if (!document.hidden && onScreen) {
       if (!dragging) {
-        dragVel *= 0.94;
-        targetYaw += dragVel * 0.016 + 0.0016; // idle turntable
+        dragVel *= Math.pow(0.94, dt * 60);
+        targetYaw += dragVel * dt + IDLE_SPIN * dt;
       }
-      yaw += (targetYaw - yaw) * Math.min(1, 8 * 0.016);
+      yaw += (targetYaw - yaw) * (1 - Math.exp(-8 * dt));
       carGroup.rotation.y = yaw;
       camera.position.copy(CAM_BASE);
       camera.lookAt(TARGET);
       renderer.render(scene, camera); // rebuilds matrices for the labels
 
       if (carReady) {
-        const w = canvas.clientWidth || 1;
-        const h = canvas.clientHeight || 1;
+        const w = viewW || 1;
+        const h = viewH || 1;
         // hide anchors on the far side of the body: they would otherwise
         // float over the car and crowd the labels on the near side
         carCenter.setFromMatrixPosition(carGroup.matrixWorld);
@@ -535,7 +630,7 @@ export function initGarage(hotspots: HotspotSpec[] = []): void {
     }
     requestAnimationFrame(render);
   };
-  render();
+  requestAnimationFrame(render);
 }
 
 function clamp01(v: number): number {
