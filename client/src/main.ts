@@ -615,18 +615,23 @@ function frame(nowMs: number): void {
 
   // ---- own car transform ----
   if (!arena) return;
+  // sub-tick interpolation: the 60 Hz sim is sampled at the display's cadence
+  // (alpha = how far into the next tick wall time already is), so the car
+  // glides instead of stepping 1–2 physics ticks per rendered frame
   const { pos, quat } = predictor
-    ? predictor.transform()
+    ? predictor.renderTransform(tickAcc / TICK_MS)
     : { pos: cam.look, quat: { x: 0, y: 0, z: 0, w: 1 } };
   if (ownVisual && predictor) {
     ownVisual.root.position.set(pos.x, pos.y, pos.z);
     ownVisual.root.quaternion.set(quat.x, quat.y, quat.z, quat.w);
 
-    // wheel spin from forward speed (wheels rotate about local x)
+    // wheel spin from forward speed (wheels rotate about local x); the rate is
+    // capped because raw spin (60 m/s → 176 rad/s ≈ 10× per frame) aliases into
+    // a strobing wobble on a 45–60 Hz display — racers blur the rim instead
     const v = predictor.sim.body.linvel;
     const fwd = quatMul(quat, { x: 0, y: 0, z: 1, w: 0 }); // rotated z axis (vector part)
     const fwdSpeed = v.x * fwd.x + v.y * fwd.y + v.z * fwd.z;
-    const spin = (fwdSpeed / 0.34) * (dtMs / 1000);
+    const spin = Math.max(-38, Math.min(38, fwdSpeed / 0.34)) * (dtMs / 1000);
     for (const w of ownVisual.wheels) w.rotation.x += spin;
 
     // thruster array: boost = full burn; hover/grip fans hum at idle;
@@ -651,7 +656,8 @@ function frame(nowMs: number): void {
     visual.root.position.set(r.pos.x, r.pos.y, r.pos.z);
     visual.root.quaternion.set(r.quat.x, r.quat.y, r.quat.z, r.quat.w);
     const rvel = interpVelocity(id) ?? { x: 0, y: 0, z: 0 };
-    const rspin = (Math.hypot(rvel.x, rvel.y, rvel.z) / 0.34) * (dtMs / 1000) * Math.sign(rvel.z || 1);
+    const rspeed = Math.max(-38, Math.min(38, Math.hypot(rvel.x, rvel.y, rvel.z) / 0.34));
+    const rspin = rspeed * (dtMs / 1000) * Math.sign(rvel.z || 1);
     for (const w of visual.wheels) w.rotation.x += rspin;
   }
 
@@ -723,34 +729,39 @@ function interpVelocity(id: string): Vec3Like | null {
 
 function updateCamera(pos: Vec3Like, q: QuatLike, dtMs: number, drive: { steer: number; pitch: number; hover: boolean }): void {
   if (!arena) return;
-  // car's yaw angle from the quaternion (stable chase basis)
+  // car's yaw angle from the (already sub-tick interpolated) quaternion: the
+  // input pose is smooth, so ONE yaw filter is all the rig needs
   const sin = 2 * (q.w * q.y + q.z * q.x);
   const cos = 1 - 2 * (q.y * q.y + q.z * q.z);
-  const yaw = atan2lerp(camYaw, Math.atan2(sin, cos), Math.min(1, dtMs / 90));
+  const yaw = atan2lerp(camYaw, Math.atan2(sin, cos), Math.min(1, dtMs / 40));
   camYaw = yaw;
 
-  const dist = 8.2;
-  const height = 3.05;
+  // speed opens the chase distance and pushes the look point out (racing feel)
+  const v = predictor?.sim.body.linvel;
+  const speed = v ? Math.hypot(v.x, v.y, v.z) : 0;
+  const k = Math.min(1, speed / 60);
+  const dist = 8.2 + k * 1.8;
   const target = {
     x: pos.x - Math.sin(yaw) * dist,
-    y: pos.y + height,
+    y: pos.y + 3.05,
     z: pos.z - Math.cos(yaw) * dist,
   };
   const lookAt = {
-    x: pos.x + Math.sin(yaw) * 10,
+    x: pos.x + Math.sin(yaw) * (10 + k * 6),
     y: pos.y + 0.72,
-    z: pos.z + Math.cos(yaw) * 10,
+    z: pos.z + Math.cos(yaw) * (10 + k * 6),
   };
-  // the old chain (yaw 200 ms + position 85 ms) trailed the car by ~30° through
-  // a full-lock turn and swung back late — a floaty "the car is lagging" feel.
-  const k = Math.min(1, dtMs / 65);
-  cam.pos.x += (target.x - cam.pos.x) * k;
-  cam.pos.y += (target.y - cam.pos.y) * k;
-  cam.pos.z += (target.z - cam.pos.z) * k;
-  const lk = Math.min(1, dtMs / 110);
-  cam.look.x += (lookAt.x - cam.look.x) * lk;
-  cam.look.y += (lookAt.y - cam.look.y) * lk;
-  cam.look.z += (lookAt.z - cam.look.z) * lk;
+  // rigid horizontal boom: position and look derive from the single filtered
+  // yaw. The old chain (yaw 90 ms + position 65 ms + look 110 ms) compounded
+  // three lags into ~12–16° of visible trail and a subtle orbit wobble mid-turn.
+  // Vertical stays softly sprung so kerbs/landings read as suspension, not jitter.
+  const ky = Math.min(1, dtMs / 55);
+  cam.pos.x = target.x;
+  cam.pos.z = target.z;
+  cam.pos.y += (target.y - cam.pos.y) * ky;
+  cam.look.x = lookAt.x;
+  cam.look.z = lookAt.z;
+  cam.look.y += (lookAt.y - cam.look.y) * ky;
 
   // slight roll (barrel feel) in the air, damped
   const rollTarget = drive.hover ? 0 : drive.pitch * 0.1;

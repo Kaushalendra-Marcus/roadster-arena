@@ -44,6 +44,15 @@ export class Predictor {
   private seq = 0;
   private view: CarBodyView;
   private simNowMs = Number.NaN;
+  /**
+   * Pose before the most recent 60 Hz step. The sim runs on a fixed 60 Hz
+   * grid while displays render at 45–144 Hz, so sampling the *latest* state
+   * makes the car visibly step (a frame that catches two ticks jumps twice
+   * as far — measured as per-frame yaw variance ≈ mean, i.e. judder).
+   * renderTransform() samples between prev and the live state instead.
+   */
+  private prevPos: Vec3 = { x: 0, y: 0, z: 0 };
+  private prevQuat: Quat = { x: 0, y: 0, z: 0, w: 1 };
   /** set when a correction exceeded the snap threshold this patch */
   snapped = false;
   /** ms timestamp of the last server patch (performance.now) */
@@ -114,6 +123,21 @@ export class Predictor {
       rollDir: 0,
       lastProcessedInput: 0,
     };
+    this.prevPos = { ...spawn };
+    this.prevQuat = { ...spawnQuat };
+  }
+
+  /** remember the pose before the next fixed step (render interpolation base) */
+  private syncPrev(): void {
+    const t = this.view.translation;
+    const q = this.view.rotation;
+    this.prevPos.x = t.x;
+    this.prevPos.y = t.y;
+    this.prevPos.z = t.z;
+    this.prevQuat.x = q.x;
+    this.prevQuat.y = q.y;
+    this.prevQuat.z = q.z;
+    this.prevQuat.w = q.w;
   }
 
   /** queue one input frame; returns its seq */
@@ -151,8 +175,10 @@ export class Predictor {
     this.pending = this.pending.filter((p) => p.seq > s.lastProcessedInput);
     const startMs = renderNowMs - this.pending.length * (1000 / 60);
     this.simNowMs = startMs;
+    this.syncPrev(); // empty replay → prev = curr = snapshot (no interpolation stretch)
     for (let i = 0; i < this.pending.length; i++) {
       const p = this.pending[i];
+      this.syncPrev();
       this.simNowMs += 1000 / 60;
       stepCar(this.sim, p.input, { cfg: this.cfg, dt: 1 / 60, nowMs: this.simNowMs });
       this.integrate();
@@ -164,6 +190,7 @@ export class Predictor {
   step(input: DriveInput, nowMs: number): void {
     if (!Number.isFinite(this.simNowMs)) this.simNowMs = nowMs;
     else this.simNowMs += 1000 / 60;
+    this.syncPrev();
     stepCar(this.sim, input, { cfg: this.cfg, dt: 1 / 60, nowMs: this.simNowMs });
     this.integrate();
   }
@@ -194,4 +221,59 @@ export class Predictor {
   transform(): { pos: Vec3; quat: Quat } {
     return { pos: { ...this.view.translation }, quat: { ...this.view.rotation } };
   }
+
+  /**
+   * Sub-tick render pose (fixed 60 Hz sim → display cadence): alpha ∈ [0,1]
+   * blends the previous tick state into the live one, so the car glides at
+   * 45–144 Hz instead of stepping 1–2 ticks per rendered frame.
+   * Sampled one tick behind "now" — equivalent to render time = wall − 16.7 ms,
+   * which is C0-continuous no matter how frame times bounce around.
+   */
+  renderTransform(alpha: number): { pos: Vec3; quat: Quat } {
+    const a = alpha <= 0 ? 0 : alpha >= 1 ? 1 : alpha;
+    const t = this.view.translation;
+    const p = this.prevPos;
+    const pos = {
+      x: p.x + (t.x - p.x) * a,
+      y: p.y + (t.y - p.y) * a,
+      z: p.z + (t.z - p.z) * a,
+    };
+    return { pos, quat: quatSlerp(this.prevQuat, this.view.rotation, a) };
+  }
+}
+
+/** shortest-arc slerp (same math as three's Quaternion.slerp, no dependency) */
+function quatSlerp(a: Quat, b: Quat, t: number): Quat {
+  let dot = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
+  let bx = b.x;
+  let by = b.y;
+  let bz = b.z;
+  let bw = b.w;
+  if (dot < 0) {
+    dot = -dot;
+    bx = -bx;
+    by = -by;
+    bz = -bz;
+    bw = -bw;
+  }
+  if (dot > 0.9995) {
+    // nearly parallel: normalised lerp is stable and indistinguishable
+    const x = a.x + (bx - a.x) * t;
+    const y = a.y + (by - a.y) * t;
+    const z = a.z + (bz - a.z) * t;
+    const w = a.w + (bw - a.w) * t;
+    const n = Math.hypot(x, y, z, w) || 1;
+    return { x: x / n, y: y / n, z: z / n, w: w / n };
+  }
+  const theta0 = Math.acos(Math.min(1, dot));
+  const theta = theta0 * t;
+  const sinTheta0 = Math.sin(theta0);
+  const s0 = Math.sin(theta0 - theta) / sinTheta0;
+  const s1 = Math.sin(theta) / sinTheta0;
+  return {
+    x: a.x * s0 + bx * s1,
+    y: a.y * s0 + by * s1,
+    z: a.z * s0 + bz * s1,
+    w: a.w * s0 + bw * s1,
+  };
 }
